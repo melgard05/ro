@@ -379,7 +379,12 @@ const LOCATIONS = {
   },
   detroitLakes: {
     key:'detroitLakes', label:'Detroit Lakes', short:'DL',
-    address:'24413 Co Rd 144, Detroit Lakes, MN 56501', color:'#2f6b41'
+    address:'24413 Co Rd 144, Detroit Lakes, MN 56501', color:'#2f6b41',
+    /* Co Rd 144 west of the transfer station is nearly impassable, so every
+       Detroit Lakes route is forced out east to US Hwy 59 via this waypoint.
+       It is draggable on the map and "reset" returns it to this point. */
+    defaultVia:{ lat:46.8607, lng:-95.8770 },
+    viaLabel:'Routed out to US Hwy 59'
   }
 };
 
@@ -750,12 +755,15 @@ function renderDestRow(){
    ROUTE WAYPOINTS  —  force a route through a chosen point
    ============================================================ */
 function loadVias(){
-  ORDER.forEach(k=>{
+  Object.keys(LOCATIONS).forEach(k=>{
     const raw = store.get('mq_via_'+k);
-    if(raw){
+    if(raw){                                  // a saved coordinate exists
       const p = raw.split(',');
       const lat = parseFloat(p[0]), lng = parseFloat(p[1]);
       if(isFinite(lat) && isFinite(lng)) state.vias[k] = { lat, lng };
+    } else if(raw === null && LOCATIONS[k].defaultVia){
+      // never touched on this browser -> seed the built-in default
+      state.vias[k] = Object.assign({}, LOCATIONS[k].defaultVia);
     }
   });
 }
@@ -773,7 +781,13 @@ function cancelPickVia(){
   if(map) map.setOptions({ draggableCursor:null });
 }
 function clearVia(k){
-  delete state.vias[k];
+  // origins with a built-in default (Detroit Lakes -> US-59) reset to that
+  // default instead of being removed, so the route always avoids Co Rd 144 west.
+  if(LOCATIONS[k] && LOCATIONS[k].defaultVia){
+    state.vias[k] = Object.assign({}, LOCATIONS[k].defaultVia);
+  } else {
+    delete state.vias[k];
+  }
   saveVia(k);
   recomputeOrigin(k);
 }
@@ -846,7 +860,7 @@ function drawMap(){
       const v = state.vias[k];
       const vm = new google.maps.Marker({
         position:{lat:v.lat,lng:v.lng}, map, draggable:true, zIndex:30,
-        title:'Route waypoint for '+o.label+' — drag to adjust',
+        title:(o.viaLabel||('Route waypoint for '+o.label))+' — drag to fine-tune',
         icon:{
           path: google.maps.SymbolPath.CIRCLE,
           scale:8, fillColor:'#ffffff', fillOpacity:1,
@@ -981,9 +995,9 @@ function render(){
           ${r.routes.length>1?`<select data-route="${k}">${opts}</select>`:`<div class="o-meta">${state.vias[k]?'Routing through your waypoint':'Single route available'}</div>`}
           <div class="via-row">
             ${state.vias[k]
-              ? `<span class="via-tag"><span style="color:${o.color}">●</span> custom waypoint set</span>
+              ? `<span class="via-tag"><span style="color:${o.color}">●</span> ${o.viaLabel||'Custom waypoint set'}</span>
                  <button class="lnk" data-via-move="${k}">move on map</button>
-                 <button class="lnk" data-via-clear="${k}">clear</button>`
+                 <button class="lnk" data-via-clear="${k}">${o.defaultVia?'reset':'clear'}</button>`
               : `<button class="lnk" data-via-set="${k}">＋ Force route through a point</button>`}
           </div>
           <div class="leg">
