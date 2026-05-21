@@ -300,25 +300,6 @@
   <!-- ============ LEFT: CONTROLS ============ -->
   <div class="panel">
 
-    <!-- API KEY -->
-    <div class="block" id="keyBlock">
-      <div class="block-h"><span>Google Maps API Key</span></div>
-      <div class="block-b">
-        <div class="row-inline">
-          <input type="password" id="apiKey" placeholder="Paste your Google Maps API key" autocomplete="off">
-          <button class="btn-primary btn-sm" id="loadBtn">Load Map</button>
-        </div>
-        <div class="hint">
-          Enable three APIs on your key (all current, none is "Legacy"):
-          <b>Maps JavaScript API</b> (map), <b>Routes API</b> (mileage), and
-          <b>Places API (New)</b> (address autocomplete). Create the key in the
-          <a href="https://console.cloud.google.com/google/maps-apis/credentials" target="_blank" rel="noopener">Google Cloud Console</a>,
-          then under <b>Application restrictions → Websites</b> add your site's domain.
-          The key is stored only in this browser.
-        </div>
-      </div>
-    </div>
-
     <!-- INPUTS -->
     <div class="block">
       <div class="block-h"><span>Quote Inputs</span></div>
@@ -338,6 +319,25 @@
         <div class="actions">
           <button class="btn-primary" id="calcBtn" disabled>Calculate Quote</button>
           <button class="btn-ghost" id="resetBtn" style="flex:0 0 auto">Clear</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- API KEY -->
+    <div class="block" id="keyBlock">
+      <div class="block-h"><span>Google Maps API Key</span></div>
+      <div class="block-b">
+        <div class="row-inline">
+          <input type="password" id="apiKey" placeholder="Paste your Google Maps API key" autocomplete="off">
+          <button class="btn-primary btn-sm" id="loadBtn">Load Map</button>
+        </div>
+        <div class="hint">
+          Enable three APIs on your key (all current, none is "Legacy"):
+          <b>Maps JavaScript API</b> (map), <b>Routes API</b> (mileage), and
+          <b>Places API (New)</b> (address autocomplete). Create the key in the
+          <a href="https://console.cloud.google.com/google/maps-apis/credentials" target="_blank" rel="noopener">Google Cloud Console</a>,
+          then under <b>Application restrictions → Websites</b> add your site's domain.
+          The key is stored only in this browser.
         </div>
       </div>
     </div>
