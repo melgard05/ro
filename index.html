@@ -45,42 +45,45 @@
   .mono{font-family:'DM Mono',ui-monospace,SFMono-Regular,Menlo,monospace;font-feature-settings:"tnum"}
 
   /* ---- header ---- */
+  /* ---- big service header (recolors per RO / MSW) ---- */
   header{
-    padding:22px 26px 16px;
-    border-bottom:1px solid var(--line);
-    display:flex;align-items:flex-end;justify-content:space-between;gap:18px;flex-wrap:wrap;
+    background:linear-gradient(135deg,var(--pine),var(--pine-dk));
+    color:#fff;padding:18px 26px;
+    display:flex;align-items:center;justify-content:space-between;gap:20px;flex-wrap:wrap;
+    transition:background .2s ease;
   }
-  .brand{display:flex;align-items:center;gap:14px}
-  .logo{
-    width:42px;height:42px;border-radius:9px;flex:none;
-    background:linear-gradient(150deg,var(--pine),var(--pine-dk));
-    display:grid;place-items:center;color:#fff;
-    font-weight:800;font-size:18px;box-shadow:var(--shadow);
+  .hd-left{display:flex;align-items:center;gap:16px}
+  .hd-ico{
+    width:56px;height:56px;flex:none;color:#fff;
+    background:rgba(255,255,255,.16);border-radius:13px;
+    display:grid;place-items:center;
   }
-  h1{font-size:20px;font-weight:800;letter-spacing:-.02em;line-height:1.15}
-  .sub{font-size:12.5px;color:var(--muted);font-weight:500}
+  .hd-ico svg{width:36px;height:36px}
+  .hd-eyebrow{
+    font-size:10.5px;font-weight:700;letter-spacing:.15em;text-transform:uppercase;opacity:.8;
+  }
+  h1#svcTitle{font-size:29px;font-weight:800;letter-spacing:-.02em;line-height:1.08;margin:1px 0}
+  .hd-sub{font-size:12.5px;opacity:.85;font-weight:500}
+  .hd-right{display:flex;flex-direction:column;align-items:flex-end;gap:10px}
+
+  .svc-tabs{display:flex;gap:4px;background:rgba(255,255,255,.16);padding:4px;border-radius:11px}
+  .svc-tab{
+    display:inline-flex;align-items:center;gap:6px;
+    background:none;border:none;color:#fff;cursor:pointer;
+    font-size:13px;font-weight:800;letter-spacing:.05em;
+    padding:8px 16px;border-radius:8px;opacity:.82;
+  }
+  .svc-tab svg{width:15px;height:15px;flex:none}
+  .svc-tab:hover{opacity:1}
+  .svc-tab.on{background:#fff;color:var(--pine);opacity:1}
+
   .status{
     font-size:12px;font-weight:600;padding:5px 11px;border-radius:999px;
-    border:1px solid var(--line-strong);background:var(--surface);color:var(--muted);
+    border:1px solid rgba(255,255,255,.5);background:rgba(255,255,255,.14);color:#fff;
     white-space:nowrap;
   }
-  .status.ok{color:var(--ok);border-color:#bcd6c2;background:#eef5ef}
-  .status.err{color:var(--err);border-color:#e3c4bf;background:#f7ecea}
-
-  /* ---- service tabs ---- */
-  .tabs{
-    display:flex;gap:2px;padding:0 26px;
-    background:var(--surface);border-bottom:1px solid var(--line);
-  }
-  .tab{
-    display:inline-flex;align-items:center;gap:7px;
-    background:none;border:none;border-bottom:3px solid transparent;
-    padding:12px 22px;font-size:13.5px;font-weight:800;letter-spacing:.06em;
-    color:var(--muted);cursor:pointer;border-radius:0;margin-bottom:-1px;
-  }
-  .tab:hover{color:var(--ink)}
-  .tab.on{color:var(--pine);border-bottom-color:var(--pine)}
-  .tab svg{width:18px;height:18px;flex:none}
+  .status.ok{color:#fff;border-color:rgba(255,255,255,.6);background:rgba(255,255,255,.22)}
+  .status.err{color:#fff;border-color:#f0c9c2;background:rgba(178,59,46,.55)}
 
   /* ---- service watermark (changes with active tab) ---- */
   .block--wm{position:relative;overflow:hidden}
@@ -275,20 +278,22 @@
 <body>
 
 <header>
-  <div class="brand">
-    <div class="logo">M</div>
+  <div class="hd-left">
+    <div class="hd-ico" id="hdIco"></div>
     <div>
-      <h1>Mileage &amp; Service Quote</h1>
-      <div class="sub" id="subTitle">Roll-Off · Perham &amp; Detroit Lakes · $6.00/mi one way</div>
+      <div class="hd-eyebrow">Mileage &amp; Service Quote</div>
+      <h1 id="svcTitle">Roll-Off</h1>
+      <div class="hd-sub" id="subTitle">Perham &amp; Detroit Lakes · $6.00/mi one way</div>
     </div>
   </div>
-  <div id="status" class="status">Awaiting Google Maps key</div>
+  <div class="hd-right">
+    <div class="svc-tabs">
+      <button class="svc-tab on" data-svc="ro">RO</button>
+      <button class="svc-tab" data-svc="msw">MSW</button>
+    </div>
+    <div id="status" class="status">Awaiting Google Maps key</div>
+  </div>
 </header>
-
-<div class="tabs" id="tabs">
-  <button class="tab on" data-svc="ro">RO</button>
-  <button class="tab" data-svc="msw">MSW</button>
-</div>
 
 <div class="layout">
 
@@ -386,15 +391,17 @@ const LOCATIONS = {
    for each. Per-mile rate is one way. */
 const SERVICES = {
   ro: {
-    label:'RO',
-    subtitle:'Roll-Off · Perham & Detroit Lakes · $6.00/mi one way',
+    label:'RO', name:'Roll-Off',
+    subtitle:'Perham & Detroit Lakes · $6.00/mi one way',
+    accent:'#2f6b41', accentDk:'#234e30',
     perMile:6,
     origins:['detroitLakes','perham'],
     base:{ detroitLakes:175, perham:100 }
   },
   msw: {
-    label:'MSW',
-    subtitle:'Municipal Solid Waste · Perham only · $6.00/mi one way',
+    label:'MSW', name:'Municipal Solid Waste',
+    subtitle:'Perham only · $6.00/mi one way',
+    accent:'#2c5d86', accentDk:'#1f4666',
     perMile:6,
     origins:['perham'],
     base:{ perham:70 }
@@ -517,9 +524,7 @@ function switchService(key){
   if(!SERVICES[key] || key===activeService) return;
   applyService(key);
   store.set('mq_service', key);
-  document.querySelectorAll('.tab').forEach(t=>t.classList.toggle('on', t.dataset.svc===key));
-  el('subTitle').textContent = SERVICES[key].subtitle;
-  renderServiceWm();
+  renderService();
   buildOrigins();
   state.results = {};
   clearMap();
@@ -531,6 +536,18 @@ function switchService(key){
   }else{
     el('resultsBody').innerHTML='<div class="empty">Pick your origin(s), enter a destination, and hit <b>Calculate Quote</b>.</div>';
   }
+}
+/* paint everything that depends on the active service */
+function renderService(){
+  const svc = SERVICES[activeService];
+  document.documentElement.style.setProperty('--pine', svc.accent);
+  document.documentElement.style.setProperty('--pine-dk', svc.accentDk);
+  const hi = el('hdIco');   if(hi) hi.innerHTML = SERVICE_ICON[activeService];
+  const st = el('svcTitle');if(st) st.textContent = svc.name;
+  const sb = el('subTitle');if(sb) sb.textContent = svc.subtitle;
+  const wm = el('serviceWm');if(wm) wm.innerHTML = SERVICE_ICON[activeService];
+  document.querySelectorAll('.svc-tab').forEach(t=>
+    t.classList.toggle('on', t.dataset.svc===activeService));
 }
 
 /* ============================================================
@@ -1137,23 +1154,16 @@ destInput.addEventListener('keydown',e=>{
 });
 destInput.addEventListener('blur',()=> setTimeout(closeAc,120));
 
-function renderServiceWm(){
-  const wm = el('serviceWm');
-  if(wm) wm.innerHTML = SERVICE_ICON[activeService] || '';
-}
-
 /* ============================================================
    WIRE UP
    ============================================================ */
 applyService(store.get('mq_service')==='msw' ? 'msw' : 'ro');
-document.querySelectorAll('.tab').forEach(t=>{
+document.querySelectorAll('.svc-tab').forEach(t=>{
   const label = t.textContent.trim();
   t.innerHTML = SERVICE_ICON[t.dataset.svc] + '<span>' + label + '</span>';
-  t.classList.toggle('on', t.dataset.svc===activeService);
   t.addEventListener('click',()=>switchService(t.dataset.svc));
 });
-el('subTitle').textContent = SERVICES[activeService].subtitle;
-renderServiceWm();
+renderService();
 
 buildOrigins();
 loadVias();
