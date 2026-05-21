@@ -408,10 +408,11 @@ const SERVICES = {
    RO = roll-off container, MSW = garbage can. */
 const SVG_RO =
   '<svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">' +
-  '<path fill="currentColor" d="M2.5 18.5 V11 H17.5 L21.5 18.5 Z"/>' +
-  '<circle fill="currentColor" cx="7" cy="20.1" r="1.6"/>' +
-  '<circle fill="currentColor" cx="15" cy="20.1" r="1.6"/>' +
-  '<path d="M2.5 12 L0.6 10.2" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" fill="none"/>' +
+  '<path fill="currentColor" fill-rule="evenodd" d="M2.3 9.6 H18.7 V17.6 H2.3 Z ' +
+  'M5 11 H6.1 V16.2 H5 Z M8 11 H9.1 V16.2 H8 Z ' +
+  'M11 11 H12.1 V16.2 H11 Z M14 11 H15.1 V16.2 H14 Z"/>' +
+  '<path fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" ' +
+  'd="M18.7 9.6 V4.9 A2.35 2.35 0 0 0 14 4.9"/>' +
   '</svg>';
 const SVG_MSW =
   '<svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg" fill="currentColor">' +
