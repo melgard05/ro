@@ -101,24 +101,26 @@
   .layout{
     display:grid;gap:18px;padding:18px 26px 40px;
     grid-template-columns:430px 1fr;
-    grid-template-rows:auto auto;
+    grid-template-rows:auto auto auto;
     align-items:start;
   }
-  .panel{grid-column:1;grid-row:1}
-  .mapwrap{grid-column:2;grid-row:1 / span 2}
-  .results{grid-column:1;grid-row:2}
+  #blockInputs{grid-column:1;grid-row:1}
+  #blockQuote {grid-column:1;grid-row:2}
+  #blockKey   {grid-column:1;grid-row:3}
+  .mapwrap    {grid-column:2;grid-row:1 / span 3}
   @media (max-width:900px){
-    .layout{grid-template-columns:1fr;grid-template-rows:auto auto auto}
-    .panel{grid-column:1;grid-row:1}
-    .mapwrap{grid-column:1;grid-row:2}
-    .results{grid-column:1;grid-row:3}
+    .layout{grid-template-columns:1fr;grid-template-rows:none}
+    #blockInputs,#blockQuote,#blockKey,.mapwrap{grid-column:1;grid-row:auto}
+    #blockInputs{order:1}
+    .mapwrap    {order:2}
+    #blockQuote {order:3}
+    #blockKey   {order:4}
   }
 
   .block{
     background:var(--surface);border:1px solid var(--line);border-radius:13px;
     box-shadow:var(--shadow);
   }
-  .block + .block{margin-top:18px}
   .block-h{
     padding:13px 16px;border-bottom:1px solid var(--line);
     font-size:11.5px;font-weight:700;letter-spacing:.09em;text-transform:uppercase;color:var(--muted);
@@ -297,53 +299,62 @@
 
 <div class="layout">
 
-  <!-- ============ LEFT: CONTROLS ============ -->
-  <div class="panel">
+  <!-- ===== 1. QUOTE INPUTS ===== -->
+  <div class="block" id="blockInputs">
+    <div class="block-h"><span>Quote Inputs</span></div>
+    <div class="block-b">
 
-    <!-- INPUTS -->
-    <div class="block">
-      <div class="block-h"><span>Quote Inputs</span></div>
-      <div class="block-b">
+      <label class="fld" id="originsLabel">Origin(s) — choose one or both</label>
+      <div class="origins" id="origins"></div>
 
-        <label class="fld" id="originsLabel">Origin(s) — choose one or both</label>
-        <div class="origins" id="origins"></div>
-
-        <div style="margin-top:14px" class="dest-wrap">
-          <label class="fld" for="dest">Destination</label>
-          <input type="text" id="dest" placeholder="Start typing an address…" autocomplete="off">
-          <div class="ac-list" id="acList"></div>
-          <div class="ac-msg" id="acMsg"></div>
-          <div class="dest-pin-row" id="destPinRow"></div>
-        </div>
-
-        <div class="actions">
-          <button class="btn-primary" id="calcBtn" disabled>Calculate Quote</button>
-          <button class="btn-ghost" id="resetBtn" style="flex:0 0 auto">Clear</button>
-        </div>
+      <div style="margin-top:14px" class="dest-wrap">
+        <label class="fld" for="dest">Destination</label>
+        <input type="text" id="dest" placeholder="Start typing an address…" autocomplete="off">
+        <div class="ac-list" id="acList"></div>
+        <div class="ac-msg" id="acMsg"></div>
+        <div class="dest-pin-row" id="destPinRow"></div>
       </div>
-    </div>
 
-    <!-- API KEY -->
-    <div class="block" id="keyBlock">
-      <div class="block-h"><span>Google Maps API Key</span></div>
-      <div class="block-b">
-        <div class="row-inline">
-          <input type="password" id="apiKey" placeholder="Paste your Google Maps API key" autocomplete="off">
-          <button class="btn-primary btn-sm" id="loadBtn">Load Map</button>
-        </div>
-        <div class="hint">
-          Enable three APIs on your key (all current, none is "Legacy"):
-          <b>Maps JavaScript API</b> (map), <b>Routes API</b> (mileage), and
-          <b>Places API (New)</b> (address autocomplete). Create the key in the
-          <a href="https://console.cloud.google.com/google/maps-apis/credentials" target="_blank" rel="noopener">Google Cloud Console</a>,
-          then under <b>Application restrictions → Websites</b> add your site's domain.
-          The key is stored only in this browser.
-        </div>
+      <div class="actions">
+        <button class="btn-primary" id="calcBtn" disabled>Calculate Quote</button>
+        <button class="btn-ghost" id="resetBtn" style="flex:0 0 auto">Clear</button>
       </div>
     </div>
   </div>
 
-  <!-- ============ MAP ============ -->
+  <!-- ===== 2. QUOTE ===== -->
+  <div class="block block--wm" id="blockQuote">
+    <div class="wm" id="serviceWm"></div>
+    <div class="block-h">
+      <span>Quote</span>
+      <button class="btn-ghost btn-sm" id="copyBtn" style="display:none">Copy summary</button>
+    </div>
+    <div class="block-b" id="resultsBody">
+      <div class="empty">Pick your origin(s), enter a destination, and hit <b>Calculate Quote</b>.</div>
+    </div>
+    <div class="toast" id="toast" style="display:none;padding:0 16px 12px"></div>
+  </div>
+
+  <!-- ===== 3. GOOGLE MAPS API KEY ===== -->
+  <div class="block" id="blockKey">
+    <div class="block-h"><span>Google Maps API Key</span></div>
+    <div class="block-b">
+      <div class="row-inline">
+        <input type="password" id="apiKey" placeholder="Paste your Google Maps API key" autocomplete="off">
+        <button class="btn-primary btn-sm" id="loadBtn">Load Map</button>
+      </div>
+      <div class="hint">
+        Enable three APIs on your key (all current, none is "Legacy"):
+        <b>Maps JavaScript API</b> (map), <b>Routes API</b> (mileage), and
+        <b>Places API (New)</b> (address autocomplete). Create the key in the
+        <a href="https://console.cloud.google.com/google/maps-apis/credentials" target="_blank" rel="noopener">Google Cloud Console</a>,
+        then under <b>Application restrictions → Websites</b> add your site's domain.
+        The key is stored only in this browser.
+      </div>
+    </div>
+  </div>
+
+  <!-- ===== MAP ===== -->
   <div class="mapwrap">
     <div id="mapHost" style="height:100%">
       <div class="map-veil" id="mapVeil">
@@ -352,21 +363,6 @@
           <div>Routes from each origin will appear here once you calculate a quote.</div>
         </div>
       </div>
-    </div>
-  </div>
-
-  <!-- ============ RESULTS ============ -->
-  <div class="results">
-    <div class="block block--wm">
-      <div class="wm" id="serviceWm"></div>
-      <div class="block-h">
-        <span>Quote</span>
-        <button class="btn-ghost btn-sm" id="copyBtn" style="display:none">Copy summary</button>
-      </div>
-      <div class="block-b" id="resultsBody">
-        <div class="empty">Pick your origin(s), enter a destination, and hit <b>Calculate Quote</b>.</div>
-      </div>
-      <div class="toast" id="toast" style="display:none;padding:0 16px 12px"></div>
     </div>
   </div>
 
@@ -605,7 +601,7 @@ window.initMap = function(){
 
   // Destination uses a custom autocomplete (Places API New); Routes API geocodes it too.
   el('calcBtn').disabled = false;
-  el('keyBlock').querySelector('.block-h span').textContent = 'Google Maps API Key  ·  connected';
+  el('blockKey').querySelector('.block-h span').textContent = 'Google Maps API Key  ·  connected';
   setStatus('Ready','ok');
 };
 
