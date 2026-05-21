@@ -1,0 +1,983 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Mileage &amp; Service Quote Calculator</title>
+
+<!-- ===== PWA / installable app ===== -->
+<link rel="manifest" href="manifest.json">
+<meta name="theme-color" content="#2f6b41">
+<link rel="icon" type="image/png" href="icon-192.png">
+<link rel="apple-touch-icon" href="apple-touch-icon.png">
+<meta name="application-name" content="Mileage Quote">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="Mileage Quote">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Hanken+Grotesk:wght@400;500;600;700;800&family=DM+Mono:wght@400;500&display=swap');
+
+  :root{
+    --paper:#f3f0e8;
+    --surface:#ffffff;
+    --ink:#1d201a;
+    --muted:#6c7065;
+    --line:#e2ded2;
+    --line-strong:#cdc8b8;
+    --pine:#2f6b41;
+    --pine-dk:#234e30;
+    --rust:#c2592b;
+    --ok:#2f6b41;
+    --err:#b23b2e;
+    --shadow:0 1px 2px rgba(28,31,26,.05),0 8px 24px rgba(28,31,26,.06);
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  body{
+    background:var(--paper);
+    color:var(--ink);
+    font-family:'Hanken Grotesk',ui-sans-serif,-apple-system,Segoe UI,Roboto,sans-serif;
+    font-size:15px;line-height:1.5;
+    -webkit-font-smoothing:antialiased;
+    background-image:radial-gradient(rgba(28,31,26,.018) 1px,transparent 1px);
+    background-size:22px 22px;
+  }
+  .mono{font-family:'DM Mono',ui-monospace,SFMono-Regular,Menlo,monospace;font-feature-settings:"tnum"}
+
+  /* ---- header ---- */
+  header{
+    padding:22px 26px 16px;
+    border-bottom:1px solid var(--line);
+    display:flex;align-items:flex-end;justify-content:space-between;gap:18px;flex-wrap:wrap;
+  }
+  .brand{display:flex;align-items:center;gap:14px}
+  .logo{
+    width:42px;height:42px;border-radius:9px;flex:none;
+    background:linear-gradient(150deg,var(--pine),var(--pine-dk));
+    display:grid;place-items:center;color:#fff;
+    font-weight:800;font-size:18px;box-shadow:var(--shadow);
+  }
+  h1{font-size:20px;font-weight:800;letter-spacing:-.02em;line-height:1.15}
+  .sub{font-size:12.5px;color:var(--muted);font-weight:500}
+  .status{
+    font-size:12px;font-weight:600;padding:5px 11px;border-radius:999px;
+    border:1px solid var(--line-strong);background:var(--surface);color:var(--muted);
+    white-space:nowrap;
+  }
+  .status.ok{color:var(--ok);border-color:#bcd6c2;background:#eef5ef}
+  .status.err{color:var(--err);border-color:#e3c4bf;background:#f7ecea}
+
+  /* ---- layout ---- */
+  .layout{
+    display:grid;gap:18px;padding:18px 26px 40px;
+    grid-template-columns:430px 1fr;
+    grid-template-rows:auto auto;
+    align-items:start;
+  }
+  .panel{grid-column:1;grid-row:1}
+  .mapwrap{grid-column:2;grid-row:1 / span 2}
+  .results{grid-column:1;grid-row:2}
+  @media (max-width:900px){
+    .layout{grid-template-columns:1fr;grid-template-rows:auto auto auto}
+    .panel{grid-column:1;grid-row:1}
+    .mapwrap{grid-column:1;grid-row:2}
+    .results{grid-column:1;grid-row:3}
+  }
+
+  .block{
+    background:var(--surface);border:1px solid var(--line);border-radius:13px;
+    box-shadow:var(--shadow);
+  }
+  .block + .block{margin-top:18px}
+  .block-h{
+    padding:13px 16px;border-bottom:1px solid var(--line);
+    font-size:11.5px;font-weight:700;letter-spacing:.09em;text-transform:uppercase;color:var(--muted);
+    display:flex;justify-content:space-between;align-items:center;gap:8px;
+  }
+  .block-b{padding:16px}
+
+  /* ---- setup / key ---- */
+  label.fld{display:block;font-size:12px;font-weight:700;margin-bottom:6px;color:var(--ink)}
+  input[type=text],input[type=password]{
+    width:100%;padding:11px 12px;border:1px solid var(--line-strong);border-radius:9px;
+    font-family:inherit;font-size:14.5px;color:var(--ink);background:#fcfbf7;
+  }
+  input:focus{outline:none;border-color:var(--pine);box-shadow:0 0 0 3px rgba(47,107,65,.13)}
+  .hint{font-size:11.5px;color:var(--muted);margin-top:7px;line-height:1.45}
+  .hint a{color:var(--pine);font-weight:600}
+  .hint b{color:var(--ink)}
+  .row-inline{display:flex;gap:8px}
+  .row-inline input{flex:1}
+
+  /* ---- custom address autocomplete ---- */
+  .dest-wrap{position:relative}
+  .ac-list{
+    position:absolute;left:0;right:0;top:calc(100% + 5px);z-index:50;
+    background:var(--surface);border:1px solid var(--line-strong);border-radius:10px;
+    box-shadow:0 10px 28px rgba(28,31,26,.16);overflow:hidden;
+    max-height:260px;overflow-y:auto;display:none;
+  }
+  .ac-list.open{display:block}
+  .ac-item{
+    padding:9px 12px;cursor:pointer;border-bottom:1px solid var(--line);
+    display:flex;gap:9px;align-items:flex-start;
+  }
+  .ac-item:last-child{border-bottom:none}
+  .ac-item:hover,.ac-item.active{background:#f1f5f1}
+  .ac-pin{
+    width:7px;height:7px;border-radius:50%;flex:none;margin-top:6px;
+    background:var(--pine);
+  }
+  .ac-main{font-size:13.5px;font-weight:600;color:var(--ink);line-height:1.3}
+  .ac-sec{font-size:11.5px;color:var(--muted)}
+  .ac-msg{font-size:11px;color:var(--err);margin-top:6px;line-height:1.4;display:none}
+  .ac-msg.on{display:block}
+
+  button{
+    font-family:inherit;font-weight:700;font-size:14px;cursor:pointer;
+    border-radius:9px;border:1px solid transparent;padding:11px 16px;
+    transition:transform .04s ease,filter .15s ease;
+  }
+  button:active{transform:translateY(1px)}
+  button:disabled{opacity:.5;cursor:not-allowed}
+  .btn-primary{background:var(--pine);color:#fff}
+  .btn-primary:hover:not(:disabled){filter:brightness(1.07)}
+  .btn-ghost{background:#fcfbf7;border-color:var(--line-strong);color:var(--ink)}
+  .btn-ghost:hover:not(:disabled){background:#f1eee4}
+  .btn-sm{padding:7px 11px;font-size:12.5px}
+
+  /* ---- origin pickers ---- */
+  .origins{display:flex;flex-direction:column;gap:10px}
+  .origin-opt{
+    display:flex;gap:11px;align-items:flex-start;
+    border:1px solid var(--line-strong);border-radius:10px;padding:11px 12px;
+    cursor:pointer;background:#fcfbf7;transition:border-color .12s,background .12s;
+  }
+  .origin-opt:hover{background:#f6f3ea}
+  .origin-opt.on{border-color:var(--sw,--pine);background:#fff}
+  .origin-opt input{margin-top:3px;width:17px;height:17px;accent-color:var(--sw);flex:none}
+  .swatch{width:11px;height:11px;border-radius:3px;flex:none;margin-top:4px;background:var(--sw)}
+  .o-name{font-weight:700;font-size:14px;display:flex;align-items:center;gap:7px}
+  .o-meta{font-size:11.8px;color:var(--muted);margin-top:1px}
+  .o-rate{font-size:11.8px;color:var(--ink);font-weight:600;margin-top:3px}
+
+  /* ---- results ---- */
+  .empty{
+    padding:30px 18px;text-align:center;color:var(--muted);font-size:13.5px;
+  }
+  .quote-card{border:1px solid var(--line);border-radius:12px;background:var(--surface);overflow:hidden}
+  .quote-card + .quote-card{margin-top:14px}
+  .qc-head{
+    padding:12px 15px;display:flex;align-items:center;gap:9px;
+    border-left:5px solid var(--sw);background:#fbfaf5;border-bottom:1px solid var(--line);
+  }
+  .qc-dot{width:11px;height:11px;border-radius:3px;background:var(--sw);flex:none}
+  .qc-title{font-weight:800;font-size:14.5px}
+  .qc-addr{font-size:11.5px;color:var(--muted)}
+  .qc-body{padding:13px 15px}
+  select{
+    width:100%;padding:9px 10px;border:1px solid var(--line-strong);border-radius:8px;
+    font-family:inherit;font-size:13px;background:#fcfbf7;color:var(--ink);cursor:pointer;
+  }
+  select:focus{outline:none;border-color:var(--pine)}
+  .leg{
+    display:flex;gap:14px;margin:11px 0 4px;font-size:12.5px;color:var(--muted);
+  }
+  .leg b{color:var(--ink);font-weight:700}
+  .calc{margin-top:10px;border-top:1px dashed var(--line-strong);padding-top:10px}
+  .calc-row{display:flex;justify-content:space-between;font-size:13px;padding:3px 0}
+  .calc-row span:last-child{font-weight:600}
+  .calc-row.total{
+    margin-top:6px;padding-top:8px;border-top:1px solid var(--line);
+    font-size:15px;font-weight:800;
+  }
+  .calc-row.total .mono{font-size:17px}
+
+  /* route waypoint controls */
+  .via-row{display:flex;align-items:center;gap:6px;flex-wrap:wrap;margin:9px 0 2px}
+  .via-tag{font-size:12px;font-weight:700;color:var(--ink)}
+  .lnk{
+    background:none;border:none;padding:2px 5px;font-size:12px;font-weight:700;
+    color:var(--pine);cursor:pointer;border-radius:5px;
+  }
+  .lnk:hover{background:#eef5ef;text-decoration:underline}
+
+  /* big average */
+  .avg-card{
+    border:1px solid var(--pine);border-radius:13px;overflow:hidden;
+    box-shadow:0 8px 26px rgba(35,78,48,.14);
+  }
+  .avg-top{
+    background:linear-gradient(150deg,var(--pine),var(--pine-dk));color:#fff;
+    padding:16px 18px;
+  }
+  .avg-label{font-size:11px;font-weight:700;letter-spacing:.1em;text-transform:uppercase;opacity:.85}
+  .avg-num{font-size:38px;font-weight:500;letter-spacing:-.02em;margin-top:2px}
+  .avg-sub{font-size:12px;opacity:.85;margin-top:2px}
+  .avg-split{display:flex;background:var(--surface)}
+  .avg-half{flex:1;padding:11px 14px;font-size:12.5px}
+  .avg-half + .avg-half{border-left:1px solid var(--line)}
+  .avg-half .k{color:var(--muted);font-size:11px;font-weight:600}
+  .avg-half .v{font-weight:800;font-size:15px;margin-top:1px}
+
+  .note-err{
+    border:1px solid #e3c4bf;background:#f7ecea;color:var(--err);
+    border-radius:10px;padding:11px 13px;font-size:12.8px;font-weight:600;margin-top:12px;
+  }
+  .actions{display:flex;gap:8px;margin-top:14px}
+  .actions button{flex:1}
+
+  /* map */
+  #map{width:100%;height:100%;border-radius:13px;background:#e9e6dc}
+  .mapwrap{
+    position:sticky;top:18px;
+    height:calc(100vh - 56px);min-height:480px;
+  }
+  @media (max-width:900px){.mapwrap{position:static;height:430px;min-height:0}}
+  .map-veil{
+    width:100%;height:100%;border-radius:13px;display:grid;place-items:center;
+    background:repeating-linear-gradient(45deg,#eceadf,#eceadf 14px,#e6e3d6 14px,#e6e3d6 28px);
+    border:1px solid var(--line);color:var(--muted);text-align:center;padding:24px;
+  }
+  .map-veil .vt{font-weight:800;color:var(--ink);font-size:15px;margin-bottom:4px}
+  .toast{font-size:11.5px;color:var(--muted);margin-top:8px;text-align:right}
+</style>
+</head>
+<body>
+
+<header>
+  <div class="brand">
+    <div class="logo">M</div>
+    <div>
+      <h1>Mileage &amp; Service Quote</h1>
+      <div class="sub">Perham &amp; Detroit Lakes origins · $6.00 / mile, one way · Google Routes API</div>
+    </div>
+  </div>
+  <div id="status" class="status">Awaiting Google Maps key</div>
+</header>
+
+<div class="layout">
+
+  <!-- ============ LEFT: CONTROLS ============ -->
+  <div class="panel">
+
+    <!-- API KEY -->
+    <div class="block" id="keyBlock">
+      <div class="block-h"><span>Google Maps API Key</span></div>
+      <div class="block-b">
+        <div class="row-inline">
+          <input type="password" id="apiKey" placeholder="Paste your Google Maps API key" autocomplete="off">
+          <button class="btn-primary btn-sm" id="loadBtn">Load Map</button>
+        </div>
+        <div class="hint">
+          Enable three APIs on your key (all current, none is "Legacy"):
+          <b>Maps JavaScript API</b> (map), <b>Routes API</b> (mileage), and
+          <b>Places API (New)</b> (address autocomplete). Create the key in the
+          <a href="https://console.cloud.google.com/google/maps-apis/credentials" target="_blank" rel="noopener">Google Cloud Console</a>,
+          then under <b>Application restrictions → Websites</b> add your site's domain.
+          The key is stored only in this browser.
+        </div>
+      </div>
+    </div>
+
+    <!-- INPUTS -->
+    <div class="block">
+      <div class="block-h"><span>Quote Inputs</span></div>
+      <div class="block-b">
+
+        <label class="fld">Origin(s) — choose one or both</label>
+        <div class="origins" id="origins"></div>
+
+        <div style="margin-top:14px" class="dest-wrap">
+          <label class="fld" for="dest">Destination address</label>
+          <input type="text" id="dest" placeholder="Start typing an address…" autocomplete="off">
+          <div class="ac-list" id="acList"></div>
+          <div class="ac-msg" id="acMsg"></div>
+        </div>
+
+        <div class="actions">
+          <button class="btn-primary" id="calcBtn" disabled>Calculate Quote</button>
+          <button class="btn-ghost" id="resetBtn" style="flex:0 0 auto">Clear</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ============ MAP ============ -->
+  <div class="mapwrap">
+    <div id="mapHost" style="height:100%">
+      <div class="map-veil" id="mapVeil">
+        <div>
+          <div class="vt">Map loads after you add a key</div>
+          <div>Routes from each origin will appear here once you calculate a quote.</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ============ RESULTS ============ -->
+  <div class="results">
+    <div class="block">
+      <div class="block-h">
+        <span>Quote</span>
+        <button class="btn-ghost btn-sm" id="copyBtn" style="display:none">Copy summary</button>
+      </div>
+      <div class="block-b" id="resultsBody">
+        <div class="empty">Pick your origin(s), enter a destination, and hit <b>Calculate Quote</b>.</div>
+      </div>
+      <div class="toast" id="toast" style="display:none;padding:0 16px 12px"></div>
+    </div>
+  </div>
+
+</div>
+
+<script>
+/* ============================================================
+   CONFIG
+   ============================================================ */
+const ORIGINS = {
+  perham: {
+    key:'perham', label:'Perham', short:'P',
+    address:'140 6th Ave NE, Perham, MN 56573',
+    base:100, perMile:6, color:'#c2592b'
+  },
+  detroitLakes: {
+    key:'detroitLakes', label:'Detroit Lakes', short:'DL',
+    address:'24413 Co Rd 144, Detroit Lakes, MN 56501',
+    base:175, perMile:6, color:'#2f6b41'
+  }
+};
+const ORDER = ['detroitLakes','perham'];
+const METERS_PER_MILE = 1609.344;
+const ROUTES_URL = 'https://routes.googleapis.com/directions/v2:computeRoutes';
+const usd = new Intl.NumberFormat('en-US',{style:'currency',currency:'USD'});
+
+/* ---- safe localStorage (works on GitHub Pages; no-ops if blocked) ---- */
+const store = {
+  get(k){ try{ return localStorage.getItem(k); }catch(e){ return null; } },
+  set(k,v){ try{ localStorage.setItem(k,v); }catch(e){} }
+};
+
+/* ---- runtime state ---- */
+let API_KEY = '';
+let map;
+let mapLayers = [];                 // polylines / markers to clear
+let state = { results:{}, vias:{} }; // results[k]:{routes,idx,err}  vias[k]:{lat,lng}
+let pickingViaFor = null;            // origin key while picking a waypoint on the map
+
+/* ============================================================
+   ELEMENTS
+   ============================================================ */
+const el = id => document.getElementById(id);
+const statusEl = el('status');
+const destInput = el('dest');
+
+function setStatus(text,kind){
+  statusEl.textContent = text;
+  statusEl.className = 'status' + (kind ? ' '+kind : '');
+}
+function fmtDuration(sec){
+  const m = Math.round(sec/60);
+  if(m<60) return m+' min';
+  const h=Math.floor(m/60), mm=m%60;
+  return mm ? `${h} hr ${mm} min` : `${h} hr`;
+}
+
+/* ============================================================
+   ORIGIN PICKERS
+   ============================================================ */
+function buildOrigins(){
+  const wrap = el('origins');
+  const saved = (store.get('mq_origins')||'detroitLakes,perham').split(',');
+  ORDER.forEach(k=>{
+    const o = ORIGINS[k];
+    const checked = saved.includes(k);
+    const lab = document.createElement('label');
+    lab.className = 'origin-opt' + (checked?' on':'');
+    lab.style.setProperty('--sw', o.color);
+    lab.innerHTML = `
+      <input type="checkbox" data-k="${k}" ${checked?'checked':''}>
+      <span class="swatch"></span>
+      <span>
+        <span class="o-name">${o.label}</span>
+        <span class="o-meta">${o.address}</span>
+        <span class="o-rate">Base ${usd.format(o.base)} + ${usd.format(o.perMile)}/mi (one way)</span>
+      </span>`;
+    const cb = lab.querySelector('input');
+    cb.addEventListener('change',()=>{
+      lab.classList.toggle('on',cb.checked);
+      store.set('mq_origins', selectedOrigins().join(','));
+    });
+    wrap.appendChild(lab);
+  });
+}
+function selectedOrigins(){
+  return [...document.querySelectorAll('#origins input:checked')].map(c=>c.dataset.k);
+}
+
+/* ============================================================
+   GOOGLE MAPS JS LOADER  (map display only)
+   ============================================================ */
+function loadGoogleMaps(key){
+  API_KEY = key;
+  if(window.google && window.google.maps){ initMap(); return; }
+  setStatus('Loading Google Maps…');
+  const s = document.createElement('script');
+  s.src = 'https://maps.googleapis.com/maps/api/js?key='
+        + encodeURIComponent(key)
+        + '&libraries=geometry,places&callback=initMap&loading=async&v=weekly';
+  s.async = true;
+  s.onerror = ()=> setStatus('Could not reach Google Maps','err');
+  document.head.appendChild(s);
+}
+
+/* Google calls this on JS-API auth failure (bad key / API not enabled / domain blocked) */
+window.gm_authFailure = function(){
+  setStatus('Maps key rejected — check key & enabled APIs','err');
+  const v = el('mapVeil');
+  if(v) v.querySelector('.vt').textContent = 'Google rejected this API key';
+};
+
+/* Google calls this once the JS API is ready */
+window.initMap = function(){
+  el('mapHost').innerHTML = '<div id="map"></div>';
+  map = new google.maps.Map(el('map'),{
+    center:{lat:46.70,lng:-95.71}, zoom:9,
+    mapTypeControl:true, streetViewControl:false, fullscreenControl:true,
+    mapTypeControlOptions:{ position: google.maps.ControlPosition.TOP_RIGHT }
+  });
+
+  // click the map to drop a route waypoint (when in "pick" mode)
+  map.addListener('click', e=>{
+    if(!pickingViaFor) return;
+    const k = pickingViaFor;
+    state.vias[k] = { lat:e.latLng.lat(), lng:e.latLng.lng() };
+    saveVia(k);
+    cancelPickVia();
+    recomputeOrigin(k);
+  });
+
+  // Destination uses a custom autocomplete (Places API New); Routes API geocodes it too.
+  el('calcBtn').disabled = false;
+  el('keyBlock').querySelector('.block-h span').textContent = 'Google Maps API Key  ·  connected';
+  setStatus('Ready','ok');
+};
+
+/* ============================================================
+   ROUTES API  —  POST directions/v2:computeRoutes
+   ============================================================ */
+async function routeRequest(originAddr, destAddr, via){
+  const body = {
+    origin:{ address: originAddr },
+    destination:{ address: destAddr },
+    travelMode:'DRIVE',
+    routingPreference:'TRAFFIC_UNAWARE',
+    computeAlternativeRoutes: !via,
+    units:'IMPERIAL',
+    languageCode:'en-US',
+    regionCode:'US'
+  };
+  if(via){
+    body.intermediates = [{
+      via:true,
+      location:{ latLng:{ latitude:via.lat, longitude:via.lng } }
+    }];
+  }
+  const res = await fetch(ROUTES_URL,{
+    method:'POST',
+    headers:{
+      'Content-Type':'application/json',
+      'X-Goog-Api-Key': API_KEY,
+      'X-Goog-FieldMask':'routes.distanceMeters,routes.duration,routes.polyline.encodedPolyline,routes.description'
+    },
+    body: JSON.stringify(body)
+  });
+
+  let data = {};
+  try{ data = await res.json(); }catch(e){}
+
+  if(!res.ok){
+    throw new Error((data.error && data.error.message) || ('Routes API error (HTTP '+res.status+')'));
+  }
+  if(!data.routes || !data.routes.length){
+    throw new Error('No driving route found to that address — check the address.');
+  }
+
+  return data.routes.map(rt=>{
+    const path = google.maps.geometry.encoding.decodePath(rt.polyline.encodedPolyline);
+    const sec  = parseInt(rt.duration,10) || 0;
+    return {
+      miles: (rt.distanceMeters||0) / METERS_PER_MILE,
+      durationSec: sec,
+      durationText: fmtDuration(sec),
+      description: rt.description || '',
+      path
+    };
+  });
+}
+
+async function calculate(){
+  const dest = destInput.value.trim();
+  const sel = selectedOrigins();
+  if(!dest){ flashResults('Enter a destination address first.'); return; }
+  if(!sel.length){ flashResults('Select at least one origin.'); return; }
+
+  store.set('mq_dest', dest);
+  setStatus('Calculating routes…');
+  el('calcBtn').disabled = true;
+  el('resultsBody').innerHTML = '<div class="empty">Calculating…</div>';
+
+  state.results = {};
+  for(const k of sel){
+    try{
+      const routes = await routeRequest(ORIGINS[k].address, dest, state.vias[k]);
+      state.results[k] = { routes, idx:0, err:null };
+    }catch(e){
+      state.results[k] = { routes:null, idx:0, err:e.message };
+    }
+  }
+  el('calcBtn').disabled = false;
+  const okCount = Object.values(state.results).filter(r=>r.routes).length;
+  setStatus(okCount ? 'Quote ready' : 'Routing failed', okCount?'ok':'err');
+  render();
+}
+
+/* ============================================================
+   ROUTE WAYPOINTS  —  force a route through a chosen point
+   ============================================================ */
+function loadVias(){
+  ORDER.forEach(k=>{
+    const raw = store.get('mq_via_'+k);
+    if(raw){
+      const p = raw.split(',');
+      const lat = parseFloat(p[0]), lng = parseFloat(p[1]);
+      if(isFinite(lat) && isFinite(lng)) state.vias[k] = { lat, lng };
+    }
+  });
+}
+function saveVia(k){
+  const v = state.vias[k];
+  store.set('mq_via_'+k, v ? (v.lat+','+v.lng) : '');
+}
+function startPickVia(k){
+  pickingViaFor = k;
+  if(map) map.setOptions({ draggableCursor:'crosshair' });
+  setStatus('Click the map to route ' + ORIGINS[k].label + ' through that point');
+}
+function cancelPickVia(){
+  pickingViaFor = null;
+  if(map) map.setOptions({ draggableCursor:null });
+}
+function clearVia(k){
+  delete state.vias[k];
+  saveVia(k);
+  recomputeOrigin(k);
+}
+async function recomputeOrigin(k){
+  const dest = destInput.value.trim();
+  if(!dest) return;
+  setStatus('Updating ' + ORIGINS[k].label + ' route…');
+  try{
+    const routes = await routeRequest(ORIGINS[k].address, dest, state.vias[k]);
+    state.results[k] = { routes, idx:0, err:null };
+  }catch(e){
+    state.results[k] = { routes:null, idx:0, err:e.message };
+  }
+  const okCount = Object.values(state.results).filter(r=>r.routes).length;
+  setStatus(okCount ? 'Quote ready' : 'Routing failed', okCount?'ok':'err');
+  render();
+}
+
+/* ============================================================
+   MAP DRAWING
+   ============================================================ */
+function clearMap(){
+  mapLayers.forEach(o=>{ try{ o.setMap(null); }catch(e){} });
+  mapLayers = [];
+}
+function markerCircle(pos,color,label){
+  return new google.maps.Marker({
+    position:pos, map,
+    label:{ text:label, color:'#fff', fontSize:'10px', fontWeight:'700' },
+    icon:{
+      path: google.maps.SymbolPath.CIRCLE,
+      scale: 11, fillColor: color, fillOpacity:1,
+      strokeColor:'#ffffff', strokeWeight:2.5
+    }
+  });
+}
+function drawMap(){
+  if(!map) return;
+  clearMap();
+  const ok = ORDER.filter(k=>state.results[k] && state.results[k].routes);
+  if(!ok.length) return;
+
+  const bounds = new google.maps.LatLngBounds();
+  let destPos = null;
+
+  ok.forEach(k=>{
+    const o = ORIGINS[k];
+    const r = state.results[k];
+
+    r.routes.forEach((rt,j)=>{
+      const sel = j===r.idx;
+      const pl = new google.maps.Polyline({
+        path: rt.path, map,
+        strokeColor:o.color,
+        strokeOpacity: sel?0.95:0.30,
+        strokeWeight: sel?6:5,
+        zIndex: sel?5:1
+      });
+      if(!sel) pl.addListener('click',()=>{ r.idx=j; render(); });
+      mapLayers.push(pl);
+    });
+
+    const chosen = r.routes[r.idx];
+    chosen.path.forEach(p=>bounds.extend(p));
+    mapLayers.push(markerCircle(chosen.path[0], o.color, o.short));
+    destPos = chosen.path[chosen.path.length-1];
+
+    // draggable route waypoint
+    if(state.vias[k]){
+      const v = state.vias[k];
+      const vm = new google.maps.Marker({
+        position:{lat:v.lat,lng:v.lng}, map, draggable:true, zIndex:30,
+        title:'Route waypoint for '+o.label+' — drag to adjust',
+        icon:{
+          path: google.maps.SymbolPath.CIRCLE,
+          scale:8, fillColor:'#ffffff', fillOpacity:1,
+          strokeColor:o.color, strokeWeight:4
+        }
+      });
+      vm.addListener('dragend', ev=>{
+        state.vias[k] = { lat:ev.latLng.lat(), lng:ev.latLng.lng() };
+        saveVia(k);
+        recomputeOrigin(k);
+      });
+      mapLayers.push(vm);
+    }
+  });
+
+  if(destPos){
+    mapLayers.push(new google.maps.Marker({
+      position:destPos, map, zIndex:20,
+      icon:{
+        path:'M 0,0 C -2,-20 -10,-22 -10,-30 A 10,10 0 1,1 10,-30 C 10,-22 2,-20 0,0 z',
+        fillColor:'#1d201a', fillOpacity:1, strokeColor:'#fff', strokeWeight:2,
+        scale:1, anchor:new google.maps.Point(0,0)
+      }
+    }));
+  }
+  map.fitBounds(bounds,72);
+}
+
+/* ============================================================
+   QUOTE MATH
+   ============================================================ */
+function chosenRoute(k){
+  const r = state.results[k];
+  return r.routes[r.idx];
+}
+function round5(x){ return Math.round(x/5)*5; }
+function quote(originKey, miles){
+  const o = ORIGINS[originKey];
+  const mileage = miles * o.perMile;
+  const subtotal = o.base + mileage;
+  return { base:o.base, mileage, subtotal, total:round5(subtotal) };
+}
+
+/* ============================================================
+   RENDER RESULTS
+   ============================================================ */
+function flashResults(msg){
+  el('resultsBody').innerHTML = `<div class="note-err">${msg}</div>`;
+  el('copyBtn').style.display='none';
+  el('toast').style.display='none';
+}
+
+function render(){
+  drawMap();
+  const body = el('resultsBody');
+  const ok = ORDER.filter(k=>state.results[k] && state.results[k].routes);
+  const errs = ORDER.filter(k=>state.results[k] && state.results[k].err);
+
+  if(!ok.length && !errs.length){
+    body.innerHTML = '<div class="empty">Pick your origin(s), enter a destination, and hit <b>Calculate Quote</b>.</div>';
+    el('copyBtn').style.display='none';
+    return;
+  }
+
+  let html = '';
+
+  /* ---- averaged headline (only when both origins succeeded) ---- */
+  if(ok.length===2){
+    let totalSum=0, mileSum=0;
+    ok.forEach(k=>{
+      const mi = chosenRoute(k).miles;
+      totalSum += quote(k,mi).total;
+      mileSum  += mi;
+    });
+    const avg = round5(totalSum/2), avgMi = mileSum/2;
+    html += `
+      <div class="avg-card">
+        <div class="avg-top">
+          <div class="avg-label">Averaged Quote — both origins</div>
+          <div class="avg-num mono">${usd.format(avg)}</div>
+          <div class="avg-sub">Average of the two origin quotes, rounded to $5 · avg ${avgMi.toFixed(1)} mi one way</div>
+        </div>
+        <div class="avg-split">
+          <div class="avg-half">
+            <div class="k">${ORIGINS.detroitLakes.label}</div>
+            <div class="v mono">${usd.format(quote('detroitLakes',chosenRoute('detroitLakes').miles).total)}</div>
+          </div>
+          <div class="avg-half">
+            <div class="k">${ORIGINS.perham.label}</div>
+            <div class="v mono">${usd.format(quote('perham',chosenRoute('perham').miles).total)}</div>
+          </div>
+        </div>
+      </div>`;
+  }
+
+  /* ---- per-origin breakdown cards ---- */
+  ok.forEach(k=>{
+    const o = ORIGINS[k];
+    const r = state.results[k];
+    const rt = r.routes[r.idx];
+    const miles = rt.miles;
+    const q = quote(k,miles);
+    const single = ok.length===1;
+
+    const opts = r.routes.map((x,j)=>{
+      const via = x.description ? (' via '+x.description) : '';
+      return `<option value="${j}" ${j===r.idx?'selected':''}>Route ${j+1} — ${x.miles.toFixed(1)} mi · ${x.durationText}${via}</option>`;
+    }).join('');
+
+    html += `
+      <div class="quote-card" style="--sw:${o.color}">
+        <div class="qc-head">
+          <span class="qc-dot"></span>
+          <div>
+            <div class="qc-title">${o.label}${single?' — Quote':''}</div>
+            <div class="qc-addr">${o.address}</div>
+          </div>
+        </div>
+        <div class="qc-body">
+          ${r.routes.length>1?`<select data-route="${k}">${opts}</select>`:`<div class="o-meta">${state.vias[k]?'Routing through your waypoint':'Single route available'}</div>`}
+          <div class="via-row">
+            ${state.vias[k]
+              ? `<span class="via-tag"><span style="color:${o.color}">●</span> custom waypoint set</span>
+                 <button class="lnk" data-via-move="${k}">move on map</button>
+                 <button class="lnk" data-via-clear="${k}">clear</button>`
+              : `<button class="lnk" data-via-set="${k}">＋ Force route through a point</button>`}
+          </div>
+          <div class="leg">
+            <span>One way: <b>${miles.toFixed(1)} mi</b></span>
+            <span>Drive time: <b>${rt.durationText}</b></span>
+          </div>
+          <div class="calc">
+            <div class="calc-row"><span>Base rate</span><span class="mono">${usd.format(q.base)}</span></div>
+            <div class="calc-row"><span>Mileage — ${miles.toFixed(1)} mi × ${usd.format(o.perMile)}</span><span class="mono">${usd.format(q.mileage)}</span></div>
+            <div class="calc-row total"><span>${single?'Quote total':o.label+' total'} <span style="font-weight:400;color:var(--muted);font-size:11px">(rounded to $5)</span></span><span class="mono">${usd.format(q.total)}</span></div>
+          </div>
+          <div style="margin-top:11px">
+            <a href="https://www.google.com/maps/dir/?api=1&origin=${encodeURIComponent(o.address)}&destination=${encodeURIComponent(destInput.value.trim())}${state.vias[k]?'&waypoints='+state.vias[k].lat+','+state.vias[k].lng:''}&travelmode=driving"
+               target="_blank" rel="noopener" style="font-size:12px;font-weight:700;color:${o.color}">
+               Open this route in Google Maps ↗
+            </a>
+          </div>
+        </div>
+      </div>`;
+  });
+
+  /* ---- errors ---- */
+  errs.forEach(k=>{
+    html += `<div class="note-err">${ORIGINS[k].label}: ${state.results[k].err}</div>`;
+  });
+
+  body.innerHTML = html;
+
+  body.querySelectorAll('select[data-route]').forEach(sel=>{
+    sel.addEventListener('change',()=>{
+      state.results[sel.dataset.route].idx = parseInt(sel.value,10);
+      render();
+    });
+  });
+  body.querySelectorAll('[data-via-set]').forEach(b=>
+    b.addEventListener('click',()=>startPickVia(b.dataset.viaSet)));
+  body.querySelectorAll('[data-via-move]').forEach(b=>
+    b.addEventListener('click',()=>startPickVia(b.dataset.viaMove)));
+  body.querySelectorAll('[data-via-clear]').forEach(b=>
+    b.addEventListener('click',()=>clearVia(b.dataset.viaClear)));
+
+  el('copyBtn').style.display = ok.length ? 'inline-block' : 'none';
+  const toast = el('toast');
+  toast.style.display='block';
+  toast.textContent = 'Tip: use "Force route through a point" to make a route follow a specific highway, then drag the white waypoint to fine-tune.';
+}
+
+/* ---- copy plain-text summary ---- */
+function copySummary(){
+  const dest = destInput.value.trim();
+  const ok = ORDER.filter(k=>state.results[k] && state.results[k].routes);
+  if(!ok.length) return;
+  let lines = ['SERVICE QUOTE','Destination: '+dest,''];
+  let sum=0;
+  ok.forEach(k=>{
+    const o=ORIGINS[k];
+    const mi=chosenRoute(k).miles, q=quote(k,mi);
+    sum+=q.total;
+    lines.push(`${o.label}  (${o.address})`);
+    lines.push(`  One way: ${mi.toFixed(1)} mi`);
+    lines.push(`  Base ${usd.format(q.base)} + ${mi.toFixed(1)} mi x ${usd.format(o.perMile)}`);
+    lines.push(`  Quote (rounded to $5): ${usd.format(q.total)}`);
+    lines.push('');
+  });
+  lines.push(ok.length===2 ? 'AVERAGED QUOTE (rounded to $5): '+usd.format(round5(sum/2))
+                            : 'QUOTE TOTAL: '+usd.format(sum));
+  navigator.clipboard.writeText(lines.join('\n')).then(()=>{
+    const b=el('copyBtn'), t=b.textContent;
+    b.textContent='Copied ✓'; setTimeout(()=>b.textContent=t,1500);
+  }).catch(()=>{});
+}
+
+/* ============================================================
+   ADDRESS AUTOCOMPLETE  —  Maps JS Places library
+   AutocompleteSuggestion.fetchAutocompleteSuggestions() feeds a
+   custom dropdown. Routed through the JS API, so no CORS wall and
+   no Google-injected widget (= no broken icons).
+   ============================================================ */
+const acList = el('acList');
+const acMsg  = el('acMsg');
+let acItems = [], acActive = -1, acTimer = null, acSeq = 0;
+
+function setAcMsg(txt){
+  if(txt){ acMsg.textContent = txt; acMsg.classList.add('on'); }
+  else   { acMsg.classList.remove('on'); }
+}
+function closeAc(){
+  acItems = []; acActive = -1;
+  acList.classList.remove('open');
+  acList.innerHTML = '';
+}
+function paintAc(){
+  if(!acItems.length){ closeAc(); return; }
+  acList.innerHTML = acItems.map((it,i)=>`
+    <div class="ac-item${i===acActive?' active':''}" data-i="${i}">
+      <span class="ac-pin"></span>
+      <span>
+        <span class="ac-main">${it.main}</span>
+        ${it.sec?`<br><span class="ac-sec">${it.sec}</span>`:''}
+      </span>
+    </div>`).join('');
+  acList.classList.add('open');
+  acList.querySelectorAll('.ac-item').forEach(node=>{
+    node.addEventListener('mousedown',e=>{        // mousedown fires before blur
+      e.preventDefault();
+      chooseAc(parseInt(node.dataset.i,10));
+    });
+  });
+}
+function chooseAc(i){
+  if(!acItems[i]) return;
+  destInput.value = acItems[i].full;
+  store.set('mq_dest', acItems[i].full);
+  closeAc();
+}
+async function fetchAc(q){
+  const places = window.google && google.maps && google.maps.places;
+  if(!places || !places.AutocompleteSuggestion) return;   // library not ready yet
+  const seq = ++acSeq;
+  try{
+    const { suggestions } = await places.AutocompleteSuggestion
+      .fetchAutocompleteSuggestions({ input:q, includedRegionCodes:['us'] });
+    if(seq !== acSeq) return;                              // superseded by newer keystroke
+    acItems = (suggestions||[])
+      .filter(s=>s.placePrediction)
+      .map(s=>{
+        const p = s.placePrediction;
+        return {
+          main: (p.mainText && p.mainText.text) || (p.text && p.text.text) || '',
+          sec:  (p.secondaryText && p.secondaryText.text) || '',
+          full: (p.text && p.text.text) || ''
+        };
+      });
+    acActive = -1;
+    setAcMsg('');
+    paintAc();
+  }catch(e){
+    if(seq !== acSeq) return;
+    closeAc();
+    console.error('Autocomplete error:', e);
+    const why = (e && (e.message || e.name)) || 'unknown error';
+    setAcMsg('Autocomplete error — ' + why + '  (typing the full address still works).');
+  }
+}
+
+destInput.addEventListener('input',()=>{
+  const q = destInput.value.trim();
+  clearTimeout(acTimer);
+  if(q.length < 3){ closeAc(); return; }
+  acTimer = setTimeout(()=>fetchAc(q), 220);
+});
+destInput.addEventListener('keydown',e=>{
+  const open = acList.classList.contains('open') && acItems.length;
+  if(e.key==='ArrowDown' && open){
+    e.preventDefault(); acActive=Math.min(acActive+1,acItems.length-1); paintAc();
+  }else if(e.key==='ArrowUp' && open){
+    e.preventDefault(); acActive=Math.max(acActive-1,0); paintAc();
+  }else if(e.key==='Escape'){
+    closeAc();
+  }else if(e.key==='Enter'){
+    e.preventDefault();
+    if(open && acActive>=0){ chooseAc(acActive); }
+    else { closeAc(); if(!el('calcBtn').disabled) calculate(); }
+  }
+});
+destInput.addEventListener('blur',()=> setTimeout(closeAc,120));
+
+/* ============================================================
+   WIRE UP
+   ============================================================ */
+buildOrigins();
+loadVias();
+
+const savedKey = store.get('mq_apikey');
+if(savedKey){ el('apiKey').value = savedKey; loadGoogleMaps(savedKey); }
+const savedDest = store.get('mq_dest');
+if(savedDest){ destInput.value = savedDest; }
+
+document.addEventListener('keydown',e=>{
+  if(e.key==='Escape' && pickingViaFor){ cancelPickVia(); setStatus('Ready','ok'); }
+});
+
+el('loadBtn').addEventListener('click',()=>{
+  const key = el('apiKey').value.trim();
+  if(!key){ setStatus('Paste a key first','err'); return; }
+  store.set('mq_apikey', key);
+  loadGoogleMaps(key);
+});
+el('calcBtn').addEventListener('click', calculate);
+el('copyBtn').addEventListener('click', copySummary);
+el('resetBtn').addEventListener('click',()=>{
+  destInput.value='';
+  state.results={};
+  clearMap();
+  el('resultsBody').innerHTML='<div class="empty">Pick your origin(s), enter a destination, and hit <b>Calculate Quote</b>.</div>';
+  el('copyBtn').style.display='none';
+  el('toast').style.display='none';
+  if(map){ map.setCenter({lat:46.70,lng:-95.71}); map.setZoom(9); }
+});
+</script>
+
+<script>
+  /* PWA: register the service worker so the app can be installed to a
+     phone home screen or as a desktop app. Degrades gracefully — if
+     sw.js isn't deployed, the page still works as a normal web page. */
+  if('serviceWorker' in navigator){
+    window.addEventListener('load', function(){
+      navigator.serviceWorker.register('sw.js').catch(function(){});
+    });
+  }
+</script>
+</body>
+</html>
