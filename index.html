@@ -101,22 +101,24 @@
   .layout{
     display:grid;gap:18px;padding:18px 26px 40px;
     grid-template-columns:430px 1fr;
-    grid-template-rows:auto auto auto auto;
+    grid-template-rows:repeat(5,auto);
     align-items:start;
   }
   #blockInputs{grid-column:1;grid-row:1}
   #blockQuote {grid-column:1;grid-row:2}
-  #blockNoGo  {grid-column:1;grid-row:3}
-  #blockKey   {grid-column:1;grid-row:4}
-  .mapwrap    {grid-column:2;grid-row:1 / span 4}
+  #blockLog   {grid-column:1;grid-row:3}
+  #blockNoGo  {grid-column:1;grid-row:4}
+  #blockKey   {grid-column:1;grid-row:5}
+  .mapwrap    {grid-column:2;grid-row:1 / span 5}
   @media (max-width:900px){
     .layout{grid-template-columns:1fr;grid-template-rows:none}
-    #blockInputs,#blockQuote,#blockNoGo,#blockKey,.mapwrap{grid-column:1;grid-row:auto}
+    #blockInputs,#blockQuote,#blockLog,#blockNoGo,#blockKey,.mapwrap{grid-column:1;grid-row:auto}
     #blockInputs{order:1}
     .mapwrap    {order:2}
     #blockQuote {order:3}
-    #blockNoGo  {order:4}
-    #blockKey   {order:5}
+    #blockLog   {order:4}
+    #blockNoGo  {order:5}
+    #blockKey   {order:6}
   }
 
   /* ---- restricted-road (no-go) controls ---- */
@@ -292,6 +294,77 @@
   }
   .map-veil .vt{font-weight:800;color:var(--ink);font-size:15px;margin-bottom:4px}
   .toast{font-size:11.5px;color:var(--muted);margin-top:8px;text-align:right}
+
+  /* ---- quote action bar ---- */
+  .quote-actions{display:flex;gap:8px;margin-top:14px;flex-wrap:wrap}
+  .quote-actions button{flex:1;min-width:115px}
+
+  /* ---- quote log ---- */
+  .log-list{display:flex;flex-direction:column;gap:8px;max-height:300px;overflow-y:auto}
+  .log-empty{font-size:13px;color:var(--muted);line-height:1.5}
+  .log-item{
+    display:flex;align-items:center;gap:10px;
+    border:1px solid var(--line);border-radius:9px;padding:9px 11px;background:#fcfbf7;
+  }
+  .log-main{flex:1;min-width:0}
+  .log-dest{
+    font-size:13px;font-weight:700;color:var(--ink);
+    display:flex;align-items:center;gap:6px;
+    white-space:nowrap;overflow:hidden;text-overflow:ellipsis;
+  }
+  .log-meta{font-size:11px;color:var(--muted);margin-top:2px}
+  .log-badge{
+    font-size:9px;font-weight:800;letter-spacing:.04em;padding:2px 6px;border-radius:5px;
+    color:#fff;flex:none;
+  }
+  .log-total{font-size:14.5px;font-weight:800;color:var(--ink);flex:none}
+  .log-del{
+    background:none;border:none;color:var(--muted);cursor:pointer;
+    font-size:14px;padding:3px 6px;border-radius:5px;flex:none;font-weight:700;
+  }
+  .log-del:hover{background:#f7ecea;color:var(--err)}
+  .log-foot{display:flex;gap:8px;margin-top:12px}
+
+  /* ---- printable quote sheet (screen-hidden; shown only when printing) ---- */
+  #printSheet{display:none}
+  @media print{
+    body{background:#fff;background-image:none}
+    body>header,body>.layout{display:none !important}
+    #printSheet{display:block !important}
+  }
+  .ps-wrap{
+    max-width:720px;margin:0 auto;padding:34px 30px;color:#1d201a;
+    font-family:'Hanken Grotesk',sans-serif;
+  }
+  .ps-top{
+    display:flex;justify-content:space-between;align-items:flex-start;
+    border-bottom:3px solid #2f6b41;padding-bottom:13px;
+  }
+  .ps-co{font-size:22px;font-weight:800;color:#2f6b41;letter-spacing:-.01em}
+  .ps-co-sub{font-size:11px;color:#6c7065;font-weight:600;margin-top:3px}
+  .ps-doc{text-align:right}
+  .ps-doc-t{font-size:15px;font-weight:800;letter-spacing:.09em}
+  .ps-doc-d{font-size:12px;color:#6c7065;margin-top:3px}
+  .ps-row{display:flex;gap:36px;margin-top:18px}
+  .ps-fld-l{font-size:9.5px;font-weight:800;letter-spacing:.08em;text-transform:uppercase;color:#6c7065}
+  .ps-fld-v{font-size:14px;font-weight:700;margin-top:3px}
+  .ps-table{width:100%;border-collapse:collapse;margin-top:20px;font-size:13px}
+  .ps-table th{
+    text-align:right;font-size:9.5px;letter-spacing:.05em;text-transform:uppercase;
+    color:#6c7065;border-bottom:1.5px solid #cdc8b8;padding:6px 8px;
+  }
+  .ps-table th:first-child{text-align:left}
+  .ps-table td{padding:8px 8px;border-bottom:1px solid #e2ded2;text-align:right;
+    font-variant-numeric:tabular-nums}
+  .ps-table td:first-child{text-align:left;font-weight:700}
+  .ps-total{display:flex;justify-content:flex-end;margin-top:20px}
+  .ps-total-box{background:#2f6b41;color:#fff;border-radius:10px;padding:13px 28px;text-align:right}
+  .ps-total-l{font-size:9.5px;font-weight:800;letter-spacing:.1em;text-transform:uppercase;opacity:.85}
+  .ps-total-v{font-size:30px;font-weight:800;margin-top:2px}
+  .ps-note{
+    margin-top:26px;font-size:10.5px;color:#6c7065;line-height:1.55;
+    border-top:1px solid #e2ded2;padding-top:12px;
+  }
 </style>
 </head>
 <body>
@@ -326,7 +399,7 @@
 
       <div style="margin-top:14px" class="dest-wrap">
         <label class="fld" for="dest">Destination</label>
-        <input type="text" id="dest" placeholder="Start typing an address…" autocomplete="off">
+        <input type="text" id="dest" placeholder="Start typing an address or ZIP code…" autocomplete="off">
         <div class="ac-list" id="acList"></div>
         <div class="ac-msg" id="acMsg"></div>
         <div class="dest-pin-row" id="destPinRow"></div>
@@ -344,7 +417,6 @@
     <div class="wm" id="serviceWm"></div>
     <div class="block-h">
       <span>Quote</span>
-      <button class="btn-ghost btn-sm" id="copyBtn" style="display:none">Copy summary</button>
     </div>
     <div class="block-b" id="resultsBody">
       <div class="empty">Pick your origin(s), enter a destination, and hit <b>Calculate Quote</b>.</div>
@@ -352,7 +424,15 @@
     <div class="toast" id="toast" style="display:none;padding:0 16px 12px"></div>
   </div>
 
-  <!-- ===== 3. RESTRICTED ROAD ===== -->
+  <!-- ===== 3. QUOTE LOG ===== -->
+  <div class="block" id="blockLog">
+    <div class="block-h"><span>Quote Log</span></div>
+    <div class="block-b">
+      <div id="logBody"></div>
+    </div>
+  </div>
+
+  <!-- ===== 4. RESTRICTED ROAD ===== -->
   <div class="block" id="blockNoGo">
     <div class="block-h"><span>Restricted Road · Detroit Lakes</span></div>
     <div class="block-b">
@@ -365,7 +445,7 @@
     </div>
   </div>
 
-  <!-- ===== 4. GOOGLE MAPS API KEY ===== -->
+  <!-- ===== 5. GOOGLE MAPS API KEY ===== -->
   <div class="block" id="blockKey">
     <div class="block-h"><span>Google Maps API Key</span></div>
     <div class="block-b">
@@ -398,6 +478,9 @@
 
 </div>
 
+<!-- printable quote sheet — hidden on screen, shown only when printing -->
+<div id="printSheet"></div>
+
 <script>
 /* ============================================================
    CONFIG
@@ -413,8 +496,8 @@ const LOCATIONS = {
   }
 };
 
-/* Each service (tab) defines which dispatch points apply and the base rate
-   for each. Per-mile rate is one way. */
+/* Each service (tab) defines which dispatch points apply and the fixed
+   base/per-mile rates for each. Per-mile rate is one way. */
 const SERVICES = {
   ro: {
     label:'RO', name:'Roll-Off',
@@ -559,7 +642,6 @@ function switchService(key){
   buildOrigins();
   state.results = {};
   clearMap();
-  el('copyBtn').style.display='none';
   el('toast').style.display='none';
   // re-quote automatically if a destination is already set, otherwise reset
   if(map && destinationParam()){
@@ -1131,7 +1213,7 @@ function chosenRoute(k){
 function round5(x){ return Math.round(x/5)*5; }
 function quote(originKey, miles){
   const o = ORIGINS[originKey];
-  const mileage = miles * o.perMile;
+  const mileage  = miles * o.perMile;
   const subtotal = o.base + mileage;
   return { base:o.base, mileage, subtotal, total:round5(subtotal) };
 }
@@ -1141,7 +1223,6 @@ function quote(originKey, miles){
    ============================================================ */
 function flashResults(msg){
   el('resultsBody').innerHTML = `<div class="note-err">${msg}</div>`;
-  el('copyBtn').style.display='none';
   el('toast').style.display='none';
 }
 
@@ -1153,7 +1234,7 @@ function render(){
 
   if(!ok.length && !errs.length){
     body.innerHTML = '<div class="empty">Pick your origin(s), enter a destination, and hit <b>Calculate Quote</b>.</div>';
-    el('copyBtn').style.display='none';
+    el('toast').style.display='none';
     return;
   }
 
@@ -1246,6 +1327,15 @@ function render(){
     html += `<div class="note-err">${ORIGINS[k].label}: ${state.results[k].err}</div>`;
   });
 
+  /* ---- action bar ---- */
+  if(ok.length){
+    html += `<div class="quote-actions">
+      <button class="btn-ghost btn-sm" id="copyBtn">Copy summary</button>
+      <button class="btn-ghost btn-sm" id="logBtn">Save to log</button>
+      <button class="btn-ghost btn-sm" id="printBtn">Print / PDF</button>
+    </div>`;
+  }
+
   body.innerHTML = html;
 
   body.querySelectorAll('select[data-route]').forEach(sel=>{
@@ -1261,34 +1351,229 @@ function render(){
   body.querySelectorAll('[data-via-clear]').forEach(b=>
     b.addEventListener('click',()=>clearVia(b.dataset.viaClear)));
 
-  el('copyBtn').style.display = ok.length ? 'inline-block' : 'none';
+  const cBtn=el('copyBtn'); if(cBtn) cBtn.addEventListener('click', copySummary);
+  const pBtn=el('printBtn'); if(pBtn) pBtn.addEventListener('click', printQuote);
+  const lBtn=el('logBtn');
+  if(lBtn) lBtn.addEventListener('click',()=>{
+    addToLog();
+    lBtn.textContent='Saved ✓';
+    setTimeout(()=>{ if(el('logBtn')) el('logBtn').textContent='Save to log'; },1500);
+  });
+
   const toast = el('toast');
-  toast.style.display='block';
-  toast.textContent = 'Tip: use "Force route through a point" to make a route follow a specific highway, then drag the white waypoint to fine-tune.';
+  if(ok.length){
+    toast.style.display='block';
+    toast.textContent = 'Tip: use "Force route through a point" to make a route follow a specific highway, then drag the white waypoint to fine-tune.';
+  }else{
+    toast.style.display='none';
+  }
+}
+
+/* gather the current on-screen quote into one structured object —
+   shared by the copy, log, and print features */
+function gatherQuote(){
+  const ok = ORDER.filter(k=>state.results[k] && state.results[k].routes);
+  if(!ok.length) return null;
+  const origins = ok.map(k=>{
+    const mi = chosenRoute(k).miles;
+    const q  = quote(k,mi);
+    return { key:k, label:ORIGINS[k].label, address:ORIGINS[k].address,
+             miles:mi, perMile:ORIGINS[k].perMile,
+             base:q.base, mileage:q.mileage, total:q.total,
+             duration:chosenRoute(k).durationText };
+  });
+  const sum = origins.reduce((s,o)=>s+o.total,0);
+  return {
+    serviceLabel: SERVICES[activeService].label,
+    serviceName : SERVICES[activeService].name,
+    serviceColor: SERVICES[activeService].accent,
+    dest        : destLabel(),
+    origins     : origins,
+    averaged    : ok.length===2,
+    total       : ok.length===2 ? round5(sum/2) : sum
+  };
 }
 
 /* ---- copy plain-text summary ---- */
 function copySummary(){
-  const ok = ORDER.filter(k=>state.results[k] && state.results[k].routes);
-  if(!ok.length) return;
-  let lines = ['SERVICE QUOTE','Destination: '+destLabel(),''];
-  let sum=0;
-  ok.forEach(k=>{
-    const o=ORIGINS[k];
-    const mi=chosenRoute(k).miles, q=quote(k,mi);
-    sum+=q.total;
+  const g = gatherQuote();
+  if(!g) return;
+  let lines = ["STEVE'S SANITATION — SERVICE QUOTE",
+    'Service: '+g.serviceName,
+    'Destination: '+g.dest, ''];
+  g.origins.forEach(o=>{
     lines.push(`${o.label}  (${o.address})`);
-    lines.push(`  One way: ${mi.toFixed(1)} mi`);
-    lines.push(`  Base ${usd.format(q.base)} + ${mi.toFixed(1)} mi x ${usd.format(o.perMile)}`);
-    lines.push(`  Quote (rounded to $5): ${usd.format(q.total)}`);
+    lines.push(`  One way: ${o.miles.toFixed(1)} mi`);
+    lines.push(`  Base ${usd.format(o.base)} + mileage ${usd.format(o.mileage)}`);
+    lines.push(`  Quote (rounded to $5): ${usd.format(o.total)}`);
     lines.push('');
   });
-  lines.push(ok.length===2 ? 'AVERAGED QUOTE (rounded to $5): '+usd.format(round5(sum/2))
-                            : 'QUOTE TOTAL: '+usd.format(sum));
+  lines.push(g.averaged ? 'AVERAGED QUOTE: '+usd.format(g.total)
+                        : 'QUOTE TOTAL: '+usd.format(g.total));
   navigator.clipboard.writeText(lines.join('\n')).then(()=>{
-    const b=el('copyBtn'), t=b.textContent;
-    b.textContent='Copied ✓'; setTimeout(()=>b.textContent=t,1500);
+    const b=el('copyBtn');
+    if(b){ b.textContent='Copied ✓'; setTimeout(()=>{ if(el('copyBtn')) el('copyBtn').textContent='Copy summary'; },1500); }
   }).catch(()=>{});
+}
+
+/* ============================================================
+   SMALL UTILITIES
+   ============================================================ */
+function escapeHtml(s){
+  return String(s==null?'':s).replace(/[&<>"]/g,c=>(
+    {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+}
+function csvCell(v){
+  v = (v==null ? '' : String(v));
+  return /[",\r\n]/.test(v) ? '"'+v.replace(/"/g,'""')+'"' : v;
+}
+function downloadFile(name, content, mime){
+  try{
+    const url = URL.createObjectURL(new Blob([content],{type:mime}));
+    const a = document.createElement('a');
+    a.href=url; a.download=name;
+    document.body.appendChild(a); a.click(); a.remove();
+    setTimeout(()=>URL.revokeObjectURL(url),1000);
+  }catch(e){ setStatus('Could not create the file','err'); }
+}
+
+/* ============================================================
+   QUOTE LOG  —  saved quotes, persisted in this browser
+   ============================================================ */
+let quoteLog = [];
+function loadLog(){
+  const raw = store.get('mq_quotelog');
+  if(raw){ try{ const a=JSON.parse(raw); if(Array.isArray(a)) quoteLog=a; }catch(e){} }
+}
+function saveLog(){ store.set('mq_quotelog', JSON.stringify(quoteLog)); }
+function addToLog(){
+  const g = gatherQuote();
+  if(!g) return;
+  quoteLog.unshift({
+    id: 'q'+Date.now(),
+    ts: Date.now(),
+    service: g.serviceLabel,
+    serviceColor: g.serviceColor,
+    dest: g.dest,
+    origins: g.origins.map(o=>({ label:o.label, miles:o.miles, total:o.total })),
+    averaged: g.averaged,
+    total: g.total
+  });
+  if(quoteLog.length>200) quoteLog.length = 200;
+  saveLog();
+  renderLog();
+}
+function deleteLogEntry(id){
+  quoteLog = quoteLog.filter(e=>e.id!==id);
+  saveLog(); renderLog();
+}
+function clearLog(){
+  if(!quoteLog.length) return;
+  if(!confirm('Clear all '+quoteLog.length+' saved quote'+(quoteLog.length===1?'':'s')+'?')) return;
+  quoteLog = []; saveLog(); renderLog();
+}
+function renderLog(){
+  const box = el('logBody');
+  if(!box) return;
+  if(!quoteLog.length){
+    box.innerHTML = '<div class="log-empty">No quotes saved yet. Calculate a quote, then press <b>Save to log</b>.</div>';
+    return;
+  }
+  let h = '<div class="log-list">';
+  quoteLog.forEach(e=>{
+    const when = new Date(e.ts).toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'});
+    const miles = e.origins.map(o=>(+o.miles).toFixed(1)).join(' / ');
+    const where = e.origins.map(o=>o.label).join(' & ');
+    h += `<div class="log-item">
+      <div class="log-main">
+        <div class="log-dest"><span class="log-badge" style="background:${e.serviceColor||'#2f6b41'}">${escapeHtml(e.service)}</span>${escapeHtml(e.dest)||'(no destination)'}</div>
+        <div class="log-meta">${when} · ${escapeHtml(where)} · ${miles} mi${e.averaged?' · averaged':''}</div>
+      </div>
+      <div class="log-total mono">${usd.format(e.total)}</div>
+      <button class="log-del" data-del="${e.id}" title="Delete this entry">✕</button>
+    </div>`;
+  });
+  h += '</div><div class="log-foot">'
+     + '<button class="btn-ghost btn-sm" id="logExport">Export CSV</button>'
+     + '<button class="btn-ghost btn-sm" id="logClear">Clear all</button></div>';
+  box.innerHTML = h;
+  box.querySelectorAll('[data-del]').forEach(b=>
+    b.addEventListener('click',()=>deleteLogEntry(b.dataset.del)));
+  el('logExport').addEventListener('click', exportLogCSV);
+  el('logClear').addEventListener('click', clearLog);
+}
+function exportLogCSV(){
+  if(!quoteLog.length) return;
+  const rows = [['Date','Service','Destination','Origins','Miles one way','Quote total (USD)']];
+  quoteLog.forEach(e=>{
+    rows.push([
+      new Date(e.ts).toLocaleString('en-US'),
+      e.service,
+      e.dest,
+      e.origins.map(o=>o.label).join(' / '),
+      e.origins.map(o=>(+o.miles).toFixed(1)).join(' / '),
+      e.total
+    ]);
+  });
+  downloadFile('steves-quote-log.csv',
+    rows.map(r=>r.map(csvCell).join(',')).join('\r\n'),
+    'text/csv;charset=utf-8');
+}
+
+/* ============================================================
+   PRINTABLE QUOTE SHEET
+   ============================================================ */
+function printQuote(){
+  const g = gatherQuote();
+  if(!g) return;
+  el('printSheet').innerHTML = buildPrintHTML(g);
+  window.print();
+}
+function buildPrintHTML(g){
+  const today = new Date().toLocaleDateString('en-US',{month:'long',day:'numeric',year:'numeric'});
+  let rows = '';
+  g.origins.forEach(o=>{
+    rows += `<tr>
+      <td>${escapeHtml(o.label)}</td>
+      <td>${o.miles.toFixed(1)} mi</td>
+      <td>${usd.format(o.base)}</td>
+      <td>${usd.format(o.mileage)}</td>
+      <td>${usd.format(o.total)}</td>
+    </tr>`;
+  });
+  const totalLabel = g.averaged ? 'Averaged Quote — Both Origins' : 'Quote Total';
+  return `<div class="ps-wrap">
+    <div class="ps-top">
+      <div>
+        <div class="ps-co">Steve's Sanitation, Inc.</div>
+        <div class="ps-co-sub">Solid Waste &amp; Recycling · 140 6th Ave NE, Perham, MN 56573</div>
+      </div>
+      <div class="ps-doc">
+        <div class="ps-doc-t">SERVICE QUOTE</div>
+        <div class="ps-doc-d">${today}</div>
+      </div>
+    </div>
+    <div class="ps-row">
+      <div><div class="ps-fld-l">Service</div><div class="ps-fld-v">${escapeHtml(g.serviceName)}</div></div>
+      <div><div class="ps-fld-l">Destination</div><div class="ps-fld-v">${escapeHtml(g.dest)||'—'}</div></div>
+    </div>
+    <table class="ps-table">
+      <thead><tr>
+        <th>From</th><th>One-way</th><th>Base</th><th>Mileage</th><th>Subtotal</th>
+      </tr></thead>
+      <tbody>${rows}</tbody>
+    </table>
+    <div class="ps-total">
+      <div class="ps-total-box">
+        <div class="ps-total-l">${totalLabel}</div>
+        <div class="ps-total-v">${usd.format(g.total)}</div>
+      </div>
+    </div>
+    <div class="ps-note">
+      Mileage is one-way and estimated via Google Maps. Quote totals are rounded to the nearest $5.${g.averaged?' The averaged quote is the mean of the two origin subtotals.':''}
+      This is an estimate prepared ${today} and is subject to change.
+    </div>
+  </div>`;
 }
 
 /* ============================================================
@@ -1328,11 +1613,25 @@ function paintAc(){
     });
   });
 }
-function chooseAc(i){
+async function chooseAc(i){
   if(!acItems[i]) return;
-  destInput.value = acItems[i].full;
-  store.set('mq_dest', acItems[i].full);
+  const it = acItems[i];
+  destInput.value = it.full;            // instant feedback with the prediction text
+  store.set('mq_dest', it.full);
   closeAc();
+  /* upgrade to the full formatted address — this is what carries the ZIP code,
+     which the autocomplete prediction text usually omits */
+  if(it.pred && typeof it.pred.toPlace === 'function'){
+    try{
+      const place = it.pred.toPlace();
+      await place.fetchFields({ fields:['formattedAddress'] });
+      if(place.formattedAddress){
+        const full = place.formattedAddress.replace(/,\s*(USA|United States)\s*$/i,'');
+        destInput.value = full;
+        store.set('mq_dest', full);
+      }
+    }catch(e){ /* keep the prediction text if the details lookup fails */ }
+  }
 }
 async function fetchAc(q){
   const places = window.google && google.maps && google.maps.places;
@@ -1349,7 +1648,8 @@ async function fetchAc(q){
         return {
           main: (p.mainText && p.mainText.text) || (p.text && p.text.text) || '',
           sec:  (p.secondaryText && p.secondaryText.text) || '',
-          full: (p.text && p.text.text) || ''
+          full: (p.text && p.text.text) || '',
+          pred: p
         };
       });
     acActive = -1;
@@ -1407,8 +1707,10 @@ if(!store.get('mq_nogo_migrated')){
 loadVias();
 loadDestPin();
 loadNoGo();
+loadLog();
 renderDestRow();
 renderNoGo();
+renderLog();
 
 const savedKey = store.get('mq_apikey');
 if(savedKey){ el('apiKey').value = savedKey; loadGoogleMaps(savedKey); }
@@ -1434,7 +1736,6 @@ el('loadBtn').addEventListener('click',()=>{
   loadGoogleMaps(key);
 });
 el('calcBtn').addEventListener('click', calculate);
-el('copyBtn').addEventListener('click', copySummary);
 el('resetBtn').addEventListener('click',()=>{
   destInput.value='';
   state.results={};
@@ -1443,7 +1744,6 @@ el('resetBtn').addEventListener('click',()=>{
   renderDestRow();
   clearMap();
   el('resultsBody').innerHTML='<div class="empty">Pick your origin(s), enter a destination, and hit <b>Calculate Quote</b>.</div>';
-  el('copyBtn').style.display='none';
   el('toast').style.display='none';
   if(map){ map.setCenter({lat:46.70,lng:-95.71}); map.setZoom(9); }
 });
