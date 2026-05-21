@@ -8,7 +8,7 @@
    ==================================================================== */
 
 const CACHE = 'mqc-v2';
-const SHELL = 'mileage-quote-calculator.html';
+const SHELL = './';
 
 self.addEventListener('install', event => {
   // activate the new worker immediately

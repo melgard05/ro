@@ -2,7 +2,7 @@
   "name": "Mileage & Service Quote Calculator",
   "short_name": "Mileage Quote",
   "description": "Calculate service mileage and quotes from the Perham and Detroit Lakes dispatch points.",
-  "start_url": "mileage-quote-calculator.html",
+  "start_url": "./",
   "scope": "./",
   "display": "standalone",
   "orientation": "any",
