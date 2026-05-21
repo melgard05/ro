@@ -101,20 +101,37 @@
   .layout{
     display:grid;gap:18px;padding:18px 26px 40px;
     grid-template-columns:430px 1fr;
-    grid-template-rows:auto auto auto;
+    grid-template-rows:auto auto auto auto;
     align-items:start;
   }
   #blockInputs{grid-column:1;grid-row:1}
   #blockQuote {grid-column:1;grid-row:2}
-  #blockKey   {grid-column:1;grid-row:3}
-  .mapwrap    {grid-column:2;grid-row:1 / span 3}
+  #blockNoGo  {grid-column:1;grid-row:3}
+  #blockKey   {grid-column:1;grid-row:4}
+  .mapwrap    {grid-column:2;grid-row:1 / span 4}
   @media (max-width:900px){
     .layout{grid-template-columns:1fr;grid-template-rows:none}
-    #blockInputs,#blockQuote,#blockKey,.mapwrap{grid-column:1;grid-row:auto}
+    #blockInputs,#blockQuote,#blockNoGo,#blockKey,.mapwrap{grid-column:1;grid-row:auto}
     #blockInputs{order:1}
     .mapwrap    {order:2}
     #blockQuote {order:3}
-    #blockKey   {order:4}
+    #blockNoGo  {order:4}
+    #blockKey   {order:5}
+  }
+
+  /* ---- restricted-road (no-go) controls ---- */
+  .nogo-btns{display:flex;gap:8px;align-items:center;margin-top:11px;flex-wrap:wrap}
+  .nogo-set{display:flex;align-items:center;gap:8px;font-size:13.5px;font-weight:700;color:var(--ink)}
+  .nogo-dot{width:10px;height:10px;border-radius:50%;background:#d2483a;flex:none;
+    box-shadow:0 0 0 3px rgba(210,72,58,.18)}
+  .nogo-trace{font-size:13px;color:var(--ink);font-weight:600;line-height:1.4}
+  .nogo-warn{
+    margin-top:9px;font-size:12px;font-weight:600;line-height:1.45;
+    background:#f7ece3;border:1px solid #e6c79f;color:#8a4f1e;border-radius:8px;padding:8px 10px;
+  }
+  .nogo-ok{
+    margin-top:9px;font-size:12px;font-weight:600;
+    background:#eef5ef;border:1px solid #bcd6c2;color:#2f6b41;border-radius:8px;padding:7px 10px;
   }
 
   .block{
@@ -335,7 +352,20 @@
     <div class="toast" id="toast" style="display:none;padding:0 16px 12px"></div>
   </div>
 
-  <!-- ===== 3. GOOGLE MAPS API KEY ===== -->
+  <!-- ===== 3. RESTRICTED ROAD ===== -->
+  <div class="block" id="blockNoGo">
+    <div class="block-h"><span>Restricted Road · Detroit Lakes</span></div>
+    <div class="block-b">
+      <div id="noGoStatus"></div>
+      <div class="hint">
+        Mark the impassable stretch of Co Rd 144 once by clicking along it on the
+        map. Detroit Lakes quotes will then auto-pick the shortest route that
+        stays off it, and flag any quote where every route is forced onto it.
+      </div>
+    </div>
+  </div>
+
+  <!-- ===== 4. GOOGLE MAPS API KEY ===== -->
   <div class="block" id="blockKey">
     <div class="block-h"><span>Google Maps API Key</span></div>
     <div class="block-b">
@@ -379,12 +409,7 @@ const LOCATIONS = {
   },
   detroitLakes: {
     key:'detroitLakes', label:'Detroit Lakes', short:'DL',
-    address:'24413 Co Rd 144, Detroit Lakes, MN 56501', color:'#2f6b41',
-    /* Co Rd 144 west of the transfer station is nearly impassable, so every
-       Detroit Lakes route is forced out east to US Hwy 59 via this waypoint.
-       It is draggable on the map and "reset" returns it to this point. */
-    defaultVia:{ lat:46.8607, lng:-95.8770 },
-    viaLabel:'Routed out to US Hwy 59'
+    address:'24413 Co Rd 144, Detroit Lakes, MN 56501', color:'#2f6b41'
   }
 };
 
@@ -446,6 +471,7 @@ function applyService(svcKey){
 
 const METERS_PER_MILE = 1609.344;
 const ROUTES_URL = 'https://routes.googleapis.com/directions/v2:computeRoutes';
+const NOGO_TOL = 6e-4;               // ~67 m tolerance for "route is on the no-go road"
 const usd = new Intl.NumberFormat('en-US',{style:'currency',currency:'USD'});
 
 /* ---- safe localStorage (works on GitHub Pages; no-ops if blocked) ---- */
@@ -458,9 +484,13 @@ const store = {
 let API_KEY = '';
 let map;
 let mapLayers = [];                 // polylines / markers to clear
-let state = { results:{}, vias:{}, destPin:null }; // results[k]:{routes,idx,err}  vias[k]/destPin:{lat,lng}
+let state = { results:{}, vias:{}, destPin:null, noGo:null }; // noGo: [{lat,lng}] restricted road
 let pickingViaFor = null;            // origin key while picking a waypoint on the map
 let pickingDest = false;             // true while picking a destination pin on the map
+let pickingNoGo = false;             // true while tracing the restricted road
+let noGoDraft = [];                  // points clicked during a no-go trace
+let noGoLayers = [];                 // map layers for the no-go road / draft
+let noGoDense = [];                  // densified no-go points used for route checks
 
 /* ============================================================
    ELEMENTS
@@ -585,8 +615,14 @@ window.initMap = function(){
     mapTypeControlOptions:{ position: google.maps.ControlPosition.TOP_RIGHT }
   });
 
-  // click the map to drop a route waypoint OR a destination pin (when in "pick" mode)
+  // click the map to: trace the restricted road, drop a waypoint, or drop a destination pin
   map.addListener('click', e=>{
+    if(pickingNoGo){
+      noGoDraft.push({ lat:e.latLng.lat(), lng:e.latLng.lng() });
+      drawNoGoLayer();
+      renderNoGo();
+      return;
+    }
     if(pickingDest){
       state.destPin = { lat:e.latLng.lat(), lng:e.latLng.lng() };
       saveDestPin();
@@ -607,6 +643,9 @@ window.initMap = function(){
   // Destination uses a custom autocomplete (Places API New); Routes API geocodes it too.
   el('calcBtn').disabled = false;
   el('blockKey').querySelector('.block-h span').textContent = 'Google Maps API Key  ·  connected';
+  rebuildNoGoDense();
+  drawNoGoLayer();
+  renderNoGo();
   setStatus('Ready','ok');
 };
 
@@ -625,8 +664,13 @@ async function routeRequest(originAddr, destObj, via){
     regionCode:'US'
   };
   if(via){
+    /* Stopover waypoint — NOT a pass-through (via:true). A pass-through makes
+       the router double back to "touch" the point while still taking the
+       globally shortest road (the U-turn-then-down-Hwy-144 bug). A stopover
+       splits the trip into legs, so the Detroit Lakes leg genuinely departs
+       east to US-59 before heading anywhere. distanceMeters/duration returned
+       are the leg totals, which is the real distance driven. */
     body.intermediates = [{
-      via:true,
       location:{ latLng:{ latitude:via.lat, longitude:via.lng } }
     }];
   }
@@ -693,9 +737,10 @@ async function calculate(){
   for(const k of sel){
     try{
       const routes = await routeRequest(ORIGINS[k].address, destObj, state.vias[k]);
-      state.results[k] = { routes, idx:0, err:null };
+      const ng = applyNoGoToResult(k, routes);
+      state.results[k] = { routes, idx:ng.idx, err:null, noGoWarn:ng.warn };
     }catch(e){
-      state.results[k] = { routes:null, idx:0, err:e.message };
+      state.results[k] = { routes:null, idx:0, err:e.message, noGoWarn:false };
     }
   }
   el('calcBtn').disabled = false;
@@ -757,13 +802,10 @@ function renderDestRow(){
 function loadVias(){
   Object.keys(LOCATIONS).forEach(k=>{
     const raw = store.get('mq_via_'+k);
-    if(raw){                                  // a saved coordinate exists
+    if(raw){
       const p = raw.split(',');
       const lat = parseFloat(p[0]), lng = parseFloat(p[1]);
       if(isFinite(lat) && isFinite(lng)) state.vias[k] = { lat, lng };
-    } else if(raw === null && LOCATIONS[k].defaultVia){
-      // never touched on this browser -> seed the built-in default
-      state.vias[k] = Object.assign({}, LOCATIONS[k].defaultVia);
     }
   });
 }
@@ -781,13 +823,7 @@ function cancelPickVia(){
   if(map) map.setOptions({ draggableCursor:null });
 }
 function clearVia(k){
-  // origins with a built-in default (Detroit Lakes -> US-59) reset to that
-  // default instead of being removed, so the route always avoids Co Rd 144 west.
-  if(LOCATIONS[k] && LOCATIONS[k].defaultVia){
-    state.vias[k] = Object.assign({}, LOCATIONS[k].defaultVia);
-  } else {
-    delete state.vias[k];
-  }
+  delete state.vias[k];
   saveVia(k);
   recomputeOrigin(k);
 }
@@ -797,13 +833,196 @@ async function recomputeOrigin(k){
   setStatus('Updating ' + ORIGINS[k].label + ' route…');
   try{
     const routes = await routeRequest(ORIGINS[k].address, destObj, state.vias[k]);
-    state.results[k] = { routes, idx:0, err:null };
+    const ng = applyNoGoToResult(k, routes);
+    state.results[k] = { routes, idx:ng.idx, err:null, noGoWarn:ng.warn };
   }catch(e){
-    state.results[k] = { routes:null, idx:0, err:e.message };
+    state.results[k] = { routes:null, idx:0, err:e.message, noGoWarn:false };
   }
   const okCount = Object.values(state.results).filter(r=>r.routes).length;
   setStatus(okCount ? 'Quote ready' : 'Routing failed', okCount?'ok':'err');
   render();
+}
+
+/* ============================================================
+   RESTRICTED ROAD  —  trace a road the truck must not drive
+   ============================================================ */
+function loadNoGo(){
+  const raw = store.get('mq_nogo');
+  if(raw){
+    try{
+      const a = JSON.parse(raw);
+      if(Array.isArray(a) && a.length>=2) state.noGo = a;
+    }catch(e){}
+  }
+}
+function saveNoGo(){
+  store.set('mq_nogo', state.noGo ? JSON.stringify(state.noGo) : '');
+  rebuildNoGoDense();
+}
+/* densify the traced road to ~70 m spacing so route checks are reliable
+   no matter how sparsely the road was clicked */
+function rebuildNoGoDense(){
+  noGoDense = [];
+  if(!state.noGo || state.noGo.length<2 || !window.google || !google.maps.geometry) return;
+  const sph = google.maps.geometry.spherical;
+  for(let i=0;i<state.noGo.length-1;i++){
+    const a = new google.maps.LatLng(state.noGo[i]);
+    const b = new google.maps.LatLng(state.noGo[i+1]);
+    const steps = Math.max(1, Math.round(sph.computeDistanceBetween(a,b)/70));
+    for(let s=0;s<steps;s++) noGoDense.push(sph.interpolate(a,b,s/steps));
+    if(i===state.noGo.length-2) noGoDense.push(b);
+  }
+}
+/* does this route drive along the restricted road? */
+function routeUsesNoGo(route){
+  if(!noGoDense.length || !route.path || !route.path.length) return false;
+  const poly = new google.maps.Polyline({ path:route.path });
+  let hits = 0;
+  for(const p of noGoDense){
+    if(google.maps.geometry.poly.isLocationOnEdge(p, poly, NOGO_TOL)){
+      hits++;
+      if(hits>=3) return true;   // 3+ dense hits = genuinely on the road (a crossing is ~1)
+    }
+  }
+  return false;
+}
+/* flag every route, then choose the shortest route that stays off the road;
+   if all routes use it, choose the shortest overall and warn */
+function applyNoGoToResult(k, routes){
+  const active = (k==='detroitLakes' && state.noGo && noGoDense.length);
+  routes.forEach(rt=> rt.usesNoGo = active ? routeUsesNoGo(rt) : false);
+  if(!active) return { idx:0, warn:false };
+  const indexed = routes.map((rt,i)=>({rt,i}));
+  const clean = indexed.filter(o=>!o.rt.usesNoGo);
+  const pool  = clean.length ? clean : indexed;
+  let best = pool[0];
+  pool.forEach(o=>{ if(o.rt.miles < best.rt.miles) best = o; });
+  return { idx:best.i, warn: clean.length===0 };
+}
+/* re-evaluate already-computed results after the no-go road changes */
+function reapplyNoGo(){
+  Object.keys(state.results).forEach(k=>{
+    const r = state.results[k];
+    if(!r || !r.routes) return;
+    const ng = applyNoGoToResult(k, r.routes);
+    r.idx = ng.idx; r.noGoWarn = ng.warn;
+  });
+}
+function startTraceNoGo(){
+  if(!map){ setStatus('Load the map first','err'); return; }
+  pickingNoGo = true; pickingDest = false; pickingViaFor = null;
+  noGoDraft = [];
+  map.setOptions({ draggableCursor:'crosshair' });
+  setStatus('Click along the closed road, then press Done');
+  drawNoGoLayer();
+  renderNoGo();
+}
+function finishTraceNoGo(){
+  if(noGoDraft.length<2){ setStatus('Click at least 2 points along the road','err'); return; }
+  state.noGo = noGoDraft.slice();
+  saveNoGo();
+  pickingNoGo = false; noGoDraft = [];
+  if(map) map.setOptions({ draggableCursor:null });
+  setStatus('Restricted road saved','ok');
+  reapplyNoGo();
+  renderNoGo();
+  render();
+}
+function undoNoGoPoint(){
+  noGoDraft.pop();
+  drawNoGoLayer();
+  renderNoGo();
+}
+function cancelTraceNoGo(){
+  pickingNoGo = false; noGoDraft = [];
+  if(map) map.setOptions({ draggableCursor:null });
+  setStatus('Ready','ok');
+  drawNoGoLayer();
+  renderNoGo();
+}
+function clearNoGo(){
+  state.noGo = null;
+  saveNoGo();
+  reapplyNoGo();
+  drawNoGoLayer();
+  renderNoGo();
+  render();
+}
+function clearNoGoLayers(){
+  noGoLayers.forEach(o=>{ try{ o.setMap(null); }catch(e){} });
+  noGoLayers = [];
+}
+function drawNoGoLayer(){
+  if(!map) return;
+  clearNoGoLayers();
+  const pts = pickingNoGo ? noGoDraft : state.noGo;
+  if(!pts || !pts.length) return;
+  if(pts.length>=2){
+    noGoLayers.push(new google.maps.Polyline({
+      path: pts, map,
+      strokeColor:'#d2483a',
+      strokeOpacity: pickingNoGo ? 0.95 : 0.85,
+      strokeWeight: 7, zIndex: 6
+    }));
+  }
+  if(pickingNoGo){   // show each clicked point so tracing is visible
+    pts.forEach(p=> noGoLayers.push(new google.maps.Marker({
+      position:p, map, zIndex:42,
+      icon:{ path:google.maps.SymbolPath.CIRCLE, scale:5,
+        fillColor:'#d2483a', fillOpacity:1, strokeColor:'#fff', strokeWeight:1.6 }
+    })));
+  }
+}
+function renderNoGo(){
+  const box = el('noGoStatus');
+  if(!box) return;
+  if(!map){
+    box.innerHTML = '<div class="o-meta">Add your Google Maps key below, then you can mark the road.</div>';
+    return;
+  }
+  if(pickingNoGo){
+    box.innerHTML =
+      `<div class="nogo-trace">Tracing — click along the closed stretch of road on the map`
+      + ` (4–6 points works well). <b>${noGoDraft.length}</b> point`
+      + `${noGoDraft.length===1?'':'s'} so far.</div>`
+      + `<div class="nogo-btns">`
+      + `<button class="btn-primary btn-sm" id="noGoDone">Done</button>`
+      + `<button class="lnk" id="noGoUndo">undo last</button>`
+      + `<button class="lnk" id="noGoCancel">cancel</button></div>`;
+    el('noGoDone').addEventListener('click', finishTraceNoGo);
+    el('noGoUndo').addEventListener('click', undoNoGoPoint);
+    el('noGoCancel').addEventListener('click', cancelTraceNoGo);
+  } else if(state.noGo && state.noGo.length>=2){
+    box.innerHTML =
+      `<div class="nogo-set"><span class="nogo-dot"></span> Restricted road marked`
+      + ` — ${state.noGo.length} points</div>`
+      + `<div class="nogo-btns">`
+      + `<button class="lnk" id="noGoRetrace">re-trace</button>`
+      + `<button class="lnk" id="noGoClear">clear</button></div>`;
+    el('noGoRetrace').addEventListener('click', startTraceNoGo);
+    el('noGoClear').addEventListener('click', clearNoGo);
+  } else {
+    box.innerHTML =
+      `<div class="o-meta">No restricted road set — Detroit Lakes routes are unrestricted.</div>`
+      + `<div class="nogo-btns">`
+      + `<button class="btn-ghost btn-sm" id="noGoStart">Mark the no-go road on the map</button>`
+      + `</div>`;
+    el('noGoStart').addEventListener('click', startTraceNoGo);
+  }
+}
+/* note shown inside the Detroit Lakes quote card */
+function noGoCardNote(k, r){
+  if(k!=='detroitLakes' || !state.noGo) return '';
+  const chosen = r.routes[r.idx];
+  if(r.noGoWarn || (chosen && chosen.usesNoGo)){
+    return `<div class="nogo-warn">⚠ Every route to this destination uses the`
+         + ` restricted road — there is no way around it. Showing the shortest;`
+         + ` verify before quoting.</div>`;
+  }
+  if(r.routes.some(x=>x.usesNoGo)){
+    return `<div class="nogo-ok">✓ Auto-routed to avoid the restricted road.</div>`;
+  }
+  return '';
 }
 
 /* ============================================================
@@ -827,6 +1046,7 @@ function markerCircle(pos,color,label){
 function drawMap(){
   if(!map) return;
   clearMap();
+  drawNoGoLayer();
   const ok = ORDER.filter(k=>state.results[k] && state.results[k].routes);
   if(!ok.length) return;
 
@@ -860,7 +1080,7 @@ function drawMap(){
       const v = state.vias[k];
       const vm = new google.maps.Marker({
         position:{lat:v.lat,lng:v.lng}, map, draggable:true, zIndex:30,
-        title:(o.viaLabel||('Route waypoint for '+o.label))+' — drag to fine-tune',
+        title:'Route waypoint for '+o.label+' — drag to fine-tune',
         icon:{
           path: google.maps.SymbolPath.CIRCLE,
           scale:8, fillColor:'#ffffff', fillOpacity:1,
@@ -979,7 +1199,8 @@ function render(){
 
     const opts = r.routes.map((x,j)=>{
       const via = x.description ? (' via '+x.description) : '';
-      return `<option value="${j}" ${j===r.idx?'selected':''}>Route ${j+1} — ${x.miles.toFixed(1)} mi · ${x.durationText}${via}</option>`;
+      const flag = x.usesNoGo ? '  ⚠ restricted road' : '';
+      return `<option value="${j}" ${j===r.idx?'selected':''}>Route ${j+1} — ${x.miles.toFixed(1)} mi · ${x.durationText}${via}${flag}</option>`;
     }).join('');
 
     html += `
@@ -993,11 +1214,12 @@ function render(){
         </div>
         <div class="qc-body">
           ${r.routes.length>1?`<select data-route="${k}">${opts}</select>`:`<div class="o-meta">${state.vias[k]?'Routing through your waypoint':'Single route available'}</div>`}
+          ${noGoCardNote(k,r)}
           <div class="via-row">
             ${state.vias[k]
-              ? `<span class="via-tag"><span style="color:${o.color}">●</span> ${o.viaLabel||'Custom waypoint set'}</span>
+              ? `<span class="via-tag"><span style="color:${o.color}">●</span> Custom waypoint set</span>
                  <button class="lnk" data-via-move="${k}">move on map</button>
-                 <button class="lnk" data-via-clear="${k}">${o.defaultVia?'reset':'clear'}</button>`
+                 <button class="lnk" data-via-clear="${k}">clear</button>`
               : `<button class="lnk" data-via-set="${k}">＋ Force route through a point</button>`}
           </div>
           <div class="leg">
@@ -1176,9 +1398,17 @@ document.querySelectorAll('.svc-tab').forEach(t=>{
 renderService();
 
 buildOrigins();
+/* one-time cleanup: drop the old forced Detroit Lakes US-59 waypoint, since
+   routing is now handled by the restricted-road feature instead */
+if(!store.get('mq_nogo_migrated')){
+  store.set('mq_via_detroitLakes','');
+  store.set('mq_nogo_migrated','1');
+}
 loadVias();
 loadDestPin();
+loadNoGo();
 renderDestRow();
+renderNoGo();
 
 const savedKey = store.get('mq_apikey');
 if(savedKey){ el('apiKey').value = savedKey; loadGoogleMaps(savedKey); }
@@ -1186,11 +1416,14 @@ const savedDest = store.get('mq_dest');
 if(savedDest && !state.destPin){ destInput.value = savedDest; }
 
 document.addEventListener('keydown',e=>{
-  if(e.key==='Escape' && (pickingViaFor || pickingDest)){
-    cancelPickVia();
-    pickingDest = false;
-    if(map) map.setOptions({ draggableCursor:null });
-    setStatus('Ready','ok');
+  if(e.key==='Escape'){
+    if(pickingNoGo){ cancelTraceNoGo(); return; }
+    if(pickingViaFor || pickingDest){
+      cancelPickVia();
+      pickingDest = false;
+      if(map) map.setOptions({ draggableCursor:null });
+      setStatus('Ready','ok');
+    }
   }
 });
 
