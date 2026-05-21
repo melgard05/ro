@@ -447,6 +447,7 @@ window.initMap = function(){
   el('mapHost').innerHTML = '<div id="map"></div>';
   map = new google.maps.Map(el('map'),{
     center:{lat:46.70,lng:-95.71}, zoom:9,
+    mapTypeId:'hybrid',                       // satellite imagery with road labels
     gestureHandling:'greedy',                 // scroll wheel zooms without Ctrl
     mapTypeControl:true, streetViewControl:false, fullscreenControl:true,
     mapTypeControlOptions:{ position: google.maps.ControlPosition.TOP_RIGHT }
