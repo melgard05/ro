@@ -394,6 +394,11 @@
     <div class="block-h"><span>Quote Inputs</span></div>
     <div class="block-b">
 
+      <div id="rateModeWrap" style="display:none;margin-bottom:14px">
+        <label class="fld">MSW Rate — choose one</label>
+        <div class="origins" id="rateModes"></div>
+      </div>
+
       <label class="fld" id="originsLabel">Origin(s) — choose one or both</label>
       <div class="origins" id="origins"></div>
 
@@ -509,11 +514,14 @@ const SERVICES = {
   },
   msw: {
     label:'MSW', name:'Municipal Solid Waste',
-    subtitle:'Perham only · $6.00/mi one way',
     accent:'#2c5d86', accentDk:'#1f4666',
-    perMile:6,
     origins:['perham'],
-    base:{ perham:70 }
+    /* MSW has two selectable rates, same Perham origin. Only one applies
+       to a quote at a time. */
+    rateModes:{
+      temporary:{ label:'Temporary', perMile:6, base:{ perham:70 } },
+      permanent:{ label:'Permanent', perMile:3, base:{ perham:70 } }
+    }
   }
 };
 
@@ -537,17 +545,25 @@ const SERVICE_ICON = { ro:SVG_RO, msw:SVG_MSW };
 /* ORIGINS and ORDER are rebuilt whenever the active service (tab) changes,
    so the rest of the app keeps reading them exactly as before. */
 let activeService = 'ro';
+/* MSW only: which of its rate modes ('temporary' | 'permanent') is in use.
+   The saved value is applied in WIRE UP, once `store` exists. */
+let activeRateMode = 'temporary';
 let ORIGINS = {};
 let ORDER = [];
+function activeRate(svcKey){
+  const svc = SERVICES[svcKey];
+  return svc.rateModes ? svc.rateModes[activeRateMode] : svc;
+}
 function applyService(svcKey){
   activeService = svcKey;
   const svc = SERVICES[svcKey];
+  const rate = activeRate(svcKey);
   ORDER = svc.origins.slice();
   ORIGINS = {};
   ORDER.forEach(k=>{
     ORIGINS[k] = Object.assign({}, LOCATIONS[k], {
-      base: svc.base[k],
-      perMile: svc.perMile
+      base: rate.base[k],
+      perMile: rate.perMile
     });
   });
 }
@@ -639,6 +655,7 @@ function switchService(key){
   applyService(key);
   store.set('mq_service', key);
   renderService();
+  buildRateModes();
   buildOrigins();
   state.results = {};
   clearMap();
@@ -657,10 +674,58 @@ function renderService(){
   document.documentElement.style.setProperty('--pine-dk', svc.accentDk);
   const hi = el('hdIco');   if(hi) hi.innerHTML = SERVICE_ICON[activeService];
   const st = el('svcTitle');if(st) st.textContent = svc.name;
-  const sb = el('subTitle');if(sb) sb.textContent = svc.subtitle;
+  let sub = svc.subtitle;
+  if(svc.rateModes){
+    const r = svc.rateModes[activeRateMode];
+    sub = 'Perham only · ' + r.label + ' rate · ' + usd.format(r.perMile) + '/mi one way';
+  }
+  const sb = el('subTitle');if(sb) sb.textContent = sub;
   const wm = el('serviceWm');if(wm) wm.innerHTML = SERVICE_ICON[activeService];
   document.querySelectorAll('.svc-tab').forEach(t=>
     t.classList.toggle('on', t.dataset.svc===activeService));
+}
+
+/* ============================================================
+   MSW RATE SELECTOR  —  Temporary / Permanent (mutually exclusive)
+   ============================================================ */
+function buildRateModes(){
+  const wrap = el('rateModeWrap');
+  const box  = el('rateModes');
+  if(!wrap || !box) return;
+  const svc = SERVICES[activeService];
+  if(!svc.rateModes){            // RO and any single-rate service: hide it
+    wrap.style.display = 'none';
+    box.innerHTML = '';
+    return;
+  }
+  wrap.style.display = '';
+  box.innerHTML = '';
+  const origin = svc.origins[0];
+  Object.keys(svc.rateModes).forEach(mode=>{
+    const m  = svc.rateModes[mode];
+    const on = mode===activeRateMode;
+    const lab = document.createElement('label');
+    lab.className = 'origin-opt' + (on?' on':'');
+    lab.style.setProperty('--sw', svc.accent);
+    lab.innerHTML = `
+      <input type="radio" name="mswRate" value="${mode}" ${on?'checked':''}>
+      <span class="swatch"></span>
+      <span>
+        <span class="o-name">${m.label}</span>
+        <span class="o-rate">Base ${usd.format(m.base[origin])} + ${usd.format(m.perMile)}/mi (one way)</span>
+      </span>`;
+    lab.querySelector('input').addEventListener('change',e=>{
+      if(!e.target.checked) return;
+      activeRateMode = mode;
+      store.set('mq_msw_rate', mode);
+      applyService(activeService);
+      buildRateModes();          // refresh the highlighted card
+      buildOrigins();            // origin card reflects the new rate
+      renderService();           // header subtitle
+      if(Object.keys(state.results).length) render();   // refresh quote $ (miles unchanged)
+    });
+    box.appendChild(lab);
+  });
 }
 
 /* ============================================================
@@ -1383,10 +1448,12 @@ function gatherQuote(){
              duration:chosenRoute(k).durationText };
   });
   const sum = origins.reduce((s,o)=>s+o.total,0);
+  const svc = SERVICES[activeService];
   return {
-    serviceLabel: SERVICES[activeService].label,
-    serviceName : SERVICES[activeService].name,
-    serviceColor: SERVICES[activeService].accent,
+    serviceLabel: svc.label,
+    serviceName : svc.name,
+    serviceColor: svc.accent,
+    rateMode    : svc.rateModes ? svc.rateModes[activeRateMode].label : '',
     dest        : destLabel(),
     origins     : origins,
     averaged    : ok.length===2,
@@ -1399,7 +1466,7 @@ function copySummary(){
   const g = gatherQuote();
   if(!g) return;
   let lines = ["STEVE'S SANITATION — SERVICE QUOTE",
-    'Service: '+g.serviceName,
+    'Service: '+g.serviceName + (g.rateMode ? ' ('+g.rateMode+' rate)' : ''),
     'Destination: '+g.dest, ''];
   g.origins.forEach(o=>{
     lines.push(`${o.label}  (${o.address})`);
@@ -1454,6 +1521,7 @@ function addToLog(){
     ts: Date.now(),
     service: g.serviceLabel,
     serviceColor: g.serviceColor,
+    rateMode: g.rateMode,
     dest: g.dest,
     origins: g.origins.map(o=>({ label:o.label, miles:o.miles, total:o.total })),
     averaged: g.averaged,
@@ -1487,7 +1555,7 @@ function renderLog(){
     h += `<div class="log-item">
       <div class="log-main">
         <div class="log-dest"><span class="log-badge" style="background:${e.serviceColor||'#2f6b41'}">${escapeHtml(e.service)}</span>${escapeHtml(e.dest)||'(no destination)'}</div>
-        <div class="log-meta">${when} · ${escapeHtml(where)} · ${miles} mi${e.averaged?' · averaged':''}</div>
+        <div class="log-meta">${when} · ${escapeHtml(where)}${e.rateMode?' · '+escapeHtml(e.rateMode)+' rate':''} · ${miles} mi${e.averaged?' · averaged':''}</div>
       </div>
       <div class="log-total mono">${usd.format(e.total)}</div>
       <button class="log-del" data-del="${e.id}" title="Delete this entry">✕</button>
@@ -1504,11 +1572,12 @@ function renderLog(){
 }
 function exportLogCSV(){
   if(!quoteLog.length) return;
-  const rows = [['Date','Service','Destination','Origins','Miles one way','Quote total (USD)']];
+  const rows = [['Date','Service','Rate','Destination','Origins','Miles one way','Quote total (USD)']];
   quoteLog.forEach(e=>{
     rows.push([
       new Date(e.ts).toLocaleString('en-US'),
       e.service,
+      e.rateMode || '',
       e.dest,
       e.origins.map(o=>o.label).join(' / '),
       e.origins.map(o=>(+o.miles).toFixed(1)).join(' / '),
@@ -1554,7 +1623,7 @@ function buildPrintHTML(g){
       </div>
     </div>
     <div class="ps-row">
-      <div><div class="ps-fld-l">Service</div><div class="ps-fld-v">${escapeHtml(g.serviceName)}</div></div>
+      <div><div class="ps-fld-l">Service</div><div class="ps-fld-v">${escapeHtml(g.serviceName + (g.rateMode ? ' — '+g.rateMode+' rate' : ''))}</div></div>
       <div><div class="ps-fld-l">Destination</div><div class="ps-fld-v">${escapeHtml(g.dest)||'—'}</div></div>
     </div>
     <table class="ps-table">
@@ -1689,6 +1758,7 @@ destInput.addEventListener('blur',()=> setTimeout(closeAc,120));
 /* ============================================================
    WIRE UP
    ============================================================ */
+if(store.get('mq_msw_rate')==='permanent') activeRateMode = 'permanent';
 applyService(store.get('mq_service')==='msw' ? 'msw' : 'ro');
 document.querySelectorAll('.svc-tab').forEach(t=>{
   const label = t.textContent.trim();
@@ -1696,6 +1766,7 @@ document.querySelectorAll('.svc-tab').forEach(t=>{
   t.addEventListener('click',()=>switchService(t.dataset.svc));
 });
 renderService();
+buildRateModes();
 
 buildOrigins();
 /* one-time cleanup: drop the old forced Detroit Lakes US-59 waypoint, since
