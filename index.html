@@ -101,24 +101,22 @@
   .layout{
     display:grid;gap:18px;padding:18px 26px 40px;
     grid-template-columns:430px 1fr;
-    grid-template-rows:repeat(5,auto);
+    grid-template-rows:repeat(4,auto);
     align-items:start;
   }
   #blockInputs{grid-column:1;grid-row:1}
   #blockQuote {grid-column:1;grid-row:2}
   #blockLog   {grid-column:1;grid-row:3}
-  #blockNoGo  {grid-column:1;grid-row:4}
-  #blockKey   {grid-column:1;grid-row:5}
-  .mapwrap    {grid-column:2;grid-row:1 / span 5}
+  #blockKey   {grid-column:1;grid-row:4}
+  .mapwrap    {grid-column:2;grid-row:1 / span 4}
   @media (max-width:900px){
     .layout{grid-template-columns:1fr;grid-template-rows:none}
-    #blockInputs,#blockQuote,#blockLog,#blockNoGo,#blockKey,.mapwrap{grid-column:1;grid-row:auto}
+    #blockInputs,#blockQuote,#blockLog,#blockKey,.mapwrap{grid-column:1;grid-row:auto}
     #blockInputs{order:1}
     .mapwrap    {order:2}
     #blockQuote {order:3}
     #blockLog   {order:4}
-    #blockNoGo  {order:5}
-    #blockKey   {order:6}
+    #blockKey   {order:5}
   }
 
   /* ---- Detroit Lakes detour controls ---- */
@@ -428,22 +426,7 @@
     </div>
   </div>
 
-  <!-- ===== 4. DETROIT LAKES DETOUR ===== -->
-  <div class="block" id="blockNoGo">
-    <div class="block-h"><span>Detroit Lakes Detour · Co Rd 144</span></div>
-    <div class="block-b">
-      <div id="noGoStatus"></div>
-      <div class="hint">
-        Co Rd 144 west of the transfer station is impassable. Mark one
-        <b>detour point</b> on the road the trucks actually use — every Detroit
-        Lakes quote is then forced through it. Drag the white point on the map
-        and the route redraws live, so you can nudge it until the route is right.
-        Place it well out on the through-road, not next to the station.
-      </div>
-    </div>
-  </div>
-
-  <!-- ===== 5. GOOGLE MAPS API KEY ===== -->
+  <!-- ===== 4. GOOGLE MAPS API KEY ===== -->
   <div class="block" id="blockKey">
     <div class="block-h"><span>Google Maps API Key</span></div>
     <div class="block-b">
@@ -452,8 +435,8 @@
         <button class="btn-primary btn-sm" id="loadBtn">Load Map</button>
       </div>
       <div class="hint">
-        Enable three APIs on your key (all current, none is "Legacy"):
-        <b>Maps JavaScript API</b> (map), <b>Routes API</b> (mileage), and
+        Enable three APIs on your key: <b>Maps JavaScript API</b> (map),
+        <b>Directions API</b> (routing &amp; mileage), and
         <b>Places API (New)</b> (address autocomplete). Create the key in the
         <a href="https://console.cloud.google.com/google/maps-apis/credentials" target="_blank" rel="noopener">Google Cloud Console</a>,
         then under <b>Application restrictions → Websites</b> add your site's domain.
@@ -562,7 +545,6 @@ function applyService(svcKey){
 }
 
 const METERS_PER_MILE = 1609.344;
-const ROUTES_URL = 'https://routes.googleapis.com/directions/v2:computeRoutes';
 const usd = new Intl.NumberFormat('en-US',{style:'currency',currency:'USD'});
 
 /* ---- safe localStorage (works on GitHub Pages; no-ops if blocked) ---- */
@@ -574,9 +556,10 @@ const store = {
 /* ---- runtime state ---- */
 let API_KEY = '';
 let map;
-let mapLayers = [];                 // polylines / markers to clear
-let state = { results:{}, vias:{}, destPin:null };
-let pickingViaFor = null;            // origin key while picking a waypoint on the map
+let mapLayers = [];                 // origin / destination markers to clear
+let directionsService = null;       // google.maps.DirectionsService
+let renderers = {};                 // one draggable DirectionsRenderer per origin key
+let state = { results:{}, routePts:{}, destPin:null }; // routePts[k] = user-dragged via points
 let pickingDest = false;             // true while picking a destination pin on the map
 
 /* ============================================================
@@ -653,9 +636,10 @@ function switchService(key){
   buildOrigins();
   state.results = {};
   clearMap();
+  hideAllRenderers();
   el('toast').style.display='none';
   // re-quote automatically if a destination is already set, otherwise reset
-  if(map && destinationParam()){
+  if(map && directionsDestination()){
     calculate();
   }else{
     el('resultsBody').innerHTML='<div class="empty">Pick your origin(s), enter a destination, and hit <b>Calculate Quote</b>.</div>';
@@ -755,98 +739,131 @@ window.initMap = function(){
     mapTypeControl:true, streetViewControl:false, fullscreenControl:true,
     mapTypeControlOptions:{ position: google.maps.ControlPosition.TOP_RIGHT }
   });
+  directionsService = new google.maps.DirectionsService();
 
-  // click the map to: drop a route waypoint, or drop a destination pin
+  // click the map to drop a destination pin
   map.addListener('click', e=>{
-    if(pickingDest){
-      state.destPin = { lat:e.latLng.lat(), lng:e.latLng.lng() };
-      saveDestPin();
-      pickingDest = false;
-      map.setOptions({ draggableCursor:null });
-      renderDestRow();
-      calculate();
-      return;
-    }
-    if(!pickingViaFor) return;
-    const k = pickingViaFor;
-    state.vias[k] = { lat:e.latLng.lat(), lng:e.latLng.lng() };
-    saveVia(k);
-    cancelPickVia();
-    renderDetour();
-    recomputeOrigin(k);
+    if(!pickingDest) return;
+    state.destPin = { lat:e.latLng.lat(), lng:e.latLng.lng() };
+    saveDestPin();
+    pickingDest = false;
+    map.setOptions({ draggableCursor:null });
+    renderDestRow();
+    calculate();
   });
 
-  // Destination uses a custom autocomplete (Places API New); Routes API geocodes it too.
   el('calcBtn').disabled = false;
   el('blockKey').querySelector('.block-h span').textContent = 'Google Maps API Key  ·  connected';
-  renderDetour();
   setStatus('Ready','ok');
 };
 
 /* ============================================================
-   ROUTES API  —  POST directions/v2:computeRoutes
+   ROUTING  —  DirectionsService + draggable DirectionsRenderer
+   The route line on the map can be grabbed and dragged; Google
+   re-routes along real roads and the mileage updates. Each origin
+   keeps its own renderer; dragged via-points persist per origin.
    ============================================================ */
-async function routeRequest(originAddr, destObj, via){
-  const body = {
-    origin:{ address: originAddr },
-    destination: destObj,
-    travelMode:'DRIVE',
-    routingPreference:'TRAFFIC_UNAWARE',
-    computeAlternativeRoutes: !via,
-    units:'IMPERIAL',
-    languageCode:'en-US',
-    regionCode:'US'
-  };
-  if(via){
-    /* Stopover waypoint — NOT a pass-through (via:true). A pass-through makes
-       the router double back to "touch" the point while still taking the
-       globally shortest road (the U-turn-then-down-Hwy-144 bug). A stopover
-       splits the trip into legs, so the Detroit Lakes leg genuinely departs
-       east to US-59 before heading anywhere. distanceMeters/duration returned
-       are the leg totals, which is the real distance driven. */
-    body.intermediates = [{
-      location:{ latLng:{ latitude:via.lat, longitude:via.lng } }
-    }];
-  }
-  const res = await fetch(ROUTES_URL,{
-    method:'POST',
-    headers:{
-      'Content-Type':'application/json',
-      'X-Goog-Api-Key': API_KEY,
-      'X-Goog-FieldMask':'routes.distanceMeters,routes.duration,routes.polyline.encodedPolyline,routes.description'
-    },
-    body: JSON.stringify(body)
-  });
-
-  let data = {};
-  try{ data = await res.json(); }catch(e){}
-
-  if(!res.ok){
-    throw new Error((data.error && data.error.message) || ('Routes API error (HTTP '+res.status+')'));
-  }
-  if(!data.routes || !data.routes.length){
-    throw new Error('No driving route found to that address — check the address.');
-  }
-
-  return data.routes.map(rt=>{
-    const path = google.maps.geometry.encoding.decodePath(rt.polyline.encodedPolyline);
-    const sec  = parseInt(rt.duration,10) || 0;
-    return {
-      miles: (rt.distanceMeters||0) / METERS_PER_MILE,
-      durationSec: sec,
-      durationText: fmtDuration(sec),
-      description: rt.description || '',
-      path
-    };
-  });
+function dirErrMsg(e){
+  const c = String((e && (e.code || e.message)) || '');
+  if(/ZERO_RESULTS/.test(c))     return 'No driving route found to that address.';
+  if(/NOT_FOUND/.test(c))        return 'Could not find that address — check the spelling.';
+  if(/OVER_QUERY_LIMIT/.test(c)) return 'Google query limit reached — try again shortly.';
+  if(/REQUEST_DENIED/.test(c))   return 'Request denied — enable the Directions API on your Google Maps key.';
+  return 'Routing failed' + (c ? ' ('+c+')' : '') + '.';
 }
-
-/* destination can be a typed address OR a pin dropped on the map */
-function destinationParam(){
-  if(state.destPin) return { location:{ latLng:{ latitude:state.destPin.lat, longitude:state.destPin.lng } } };
+/* destination for DirectionsService: an address string or a LatLng pin */
+function directionsDestination(){
+  if(state.destPin) return { lat:state.destPin.lat, lng:state.destPin.lng };
   const a = destInput.value.trim();
-  return a ? { address:a } : null;
+  return a || null;
 }
+/* one DirectionsResult route -> the normalized shape the quote UI reads */
+function normalizeResult(k, dirResult, idx){
+  const routes = (dirResult.routes||[]).map(rt=>{
+    let m=0, s=0;
+    (rt.legs||[]).forEach(l=>{
+      m += (l.distance && l.distance.value) || 0;
+      s += (l.duration && l.duration.value) || 0;
+    });
+    return { miles:m/METERS_PER_MILE, durationSec:s, durationText:fmtDuration(s),
+             description: rt.summary || '' };
+  });
+  return { routes, idx:Math.min(idx||0, Math.max(0,routes.length-1)), err:null, dir:dirResult };
+}
+/* the user-dragged via-points sitting on the chosen route */
+function extractViaPoints(dirResult, idx){
+  const rt = dirResult.routes && dirResult.routes[idx];
+  if(!rt) return [];
+  const pts = [];
+  (rt.legs||[]).forEach(l=>{
+    (l.via_waypoints||[]).forEach(p=>{
+      try{ pts.push({ lat:p.lat(), lng:p.lng() }); }catch(e){}
+    });
+  });
+  return pts;
+}
+/* lazily create the draggable renderer for an origin */
+function getRenderer(k){
+  if(!renderers[k]){
+    const r = new google.maps.DirectionsRenderer({
+      draggable: true,            // the route line can be grabbed and dragged
+      suppressMarkers: true,      // the app draws its own origin / destination markers
+      preserveViewport: true,     // the app fits the map bounds itself
+      polylineOptions:{
+        strokeColor: (LOCATIONS[k] && LOCATIONS[k].color) || '#2f6b41',
+        strokeOpacity: 0.9, strokeWeight: 6
+      }
+    });
+    r.addListener('directions_changed', ()=> onRouteChanged(k));
+    renderers[k] = r;
+  }
+  return renderers[k];
+}
+function hideAllRenderers(){
+  Object.keys(renderers).forEach(k=>{ try{ renderers[k].setMap(null); }catch(e){} });
+}
+/* fired by the renderer — distinguishes a genuine user drag (new result
+   object) from our own setDirections / setRouteIndex (same object) */
+function onRouteChanged(k){
+  const rend = renderers[k];
+  if(!rend) return;
+  const dir = rend.getDirections();
+  if(!dir) return;
+  const cur = state.results[k];
+  if(cur && cur.dir === dir) return;          // our own call — not a user drag
+  const idx = rend.getRouteIndex() || 0;
+  state.results[k] = normalizeResult(k, dir, idx);
+  state.routePts[k] = extractViaPoints(dir, idx);
+  saveRoutePts(k);
+  setStatus('Route updated by drag','ok');
+  render({ fit:false });                       // don't yank the map while dragging
+}
+/* request a route for one origin, honoring any persisted dragged via-points */
+function routeFor(k){
+  const dest = directionsDestination();
+  const req = {
+    origin: ORIGINS[k].address,
+    destination: dest,
+    travelMode: google.maps.TravelMode.DRIVING,
+    region: 'us'
+  };
+  const wp = state.routePts[k] || [];
+  if(wp.length){
+    req.waypoints = wp.map(p=>({ location:{lat:p.lat,lng:p.lng}, stopover:false }));
+    req.provideRouteAlternatives = false;
+  }else{
+    req.provideRouteAlternatives = true;
+  }
+  return directionsService.route(req);         // returns a Promise<DirectionsResult>
+}
+function showRoute(k, dirResult, idx){
+  state.results[k] = normalizeResult(k, dirResult, idx);   // set BEFORE setDirections
+  const rend = getRenderer(k);
+  rend.setMap(map);
+  rend.setDirections(dirResult);
+  rend.setRouteIndex(state.results[k].idx);
+}
+
 function destLabel(){
   if(state.destPin) return 'Map pin (' + state.destPin.lat.toFixed(5) + ', ' + state.destPin.lng.toFixed(5) + ')';
   return destInput.value.trim();
@@ -855,11 +872,17 @@ function destForLink(){
   if(state.destPin) return state.destPin.lat + ',' + state.destPin.lng;
   return destInput.value.trim();
 }
+/* dragged via-points formatted for a google.com/maps/dir URL */
+function gmapsWaypoints(k){
+  const wp = state.routePts[k] || [];
+  if(!wp.length) return '';
+  return '&waypoints=' + wp.map(p=>p.lat+','+p.lng).join('|');
+}
 
 async function calculate(){
-  const destObj = destinationParam();
-  const sel = selectedOrigins();
-  if(!destObj){ flashResults('Enter a destination address, or drop a pin on the map.'); return; }
+  const dest = directionsDestination();
+  const sel  = selectedOrigins();
+  if(!dest){ flashResults('Enter a destination address, or drop a pin on the map.'); return; }
   if(!sel.length){ flashResults('Select at least one origin.'); return; }
 
   if(!state.destPin) store.set('mq_dest', destInput.value.trim());
@@ -867,13 +890,18 @@ async function calculate(){
   el('calcBtn').disabled = true;
   el('resultsBody').innerHTML = '<div class="empty">Calculating…</div>';
 
+  // hide routes for any origin not in this quote
+  Object.keys(renderers).forEach(k=>{ if(sel.indexOf(k)<0) renderers[k].setMap(null); });
+
   state.results = {};
   for(const k of sel){
     try{
-      const routes = await routeRequest(ORIGINS[k].address, destObj, state.vias[k]);
-      state.results[k] = { routes, idx:0, err:null };
+      const result = await routeFor(k);
+      if(!result || !result.routes || !result.routes.length) throw new Error('ZERO_RESULTS');
+      showRoute(k, result, 0);
     }catch(e){
-      state.results[k] = { routes:null, idx:0, err:e.message };
+      state.results[k] = { routes:null, idx:0, err:dirErrMsg(e), dir:null };
+      if(renderers[k]) renderers[k].setMap(null);
     }
   }
   el('calcBtn').disabled = false;
@@ -898,7 +926,6 @@ function saveDestPin(){
 }
 function startPickDest(){
   pickingDest = true;
-  pickingViaFor = null;
   if(map) map.setOptions({ draggableCursor:'crosshair' });
   setStatus('Click the map to set the destination');
 }
@@ -923,93 +950,50 @@ function renderDestRow(){
   } else {
     destInput.disabled = false;
     destInput.classList.remove('is-off');
-    destInput.placeholder = 'Start typing an address…';
+    destInput.placeholder = 'Start typing an address or ZIP code…';
     row.innerHTML = '<button class="lnk" id="destPinSet">📍 No address? Drop a destination pin on the map</button>';
     el('destPinSet').addEventListener('click', startPickDest);
   }
 }
 
 /* ============================================================
-   ROUTE WAYPOINTS  —  force a route through a chosen point
+   DRAGGED-ROUTE PERSISTENCE  —  the via-points the user pulls a
+   route through are remembered per origin, so a fix (e.g. keeping
+   Detroit Lakes off Co Rd 144) carries to the next quote.
    ============================================================ */
-function loadVias(){
+function loadRoutePts(){
   Object.keys(LOCATIONS).forEach(k=>{
-    const raw = store.get('mq_via_'+k);
+    const raw = store.get('mq_routepts_'+k);
     if(raw){
-      const p = raw.split(',');
-      const lat = parseFloat(p[0]), lng = parseFloat(p[1]);
-      if(isFinite(lat) && isFinite(lng)) state.vias[k] = { lat, lng };
+      try{ const a = JSON.parse(raw); if(Array.isArray(a)) state.routePts[k] = a; }catch(e){}
     }
   });
 }
-function saveVia(k){
-  const v = state.vias[k];
-  store.set('mq_via_'+k, v ? (v.lat+','+v.lng) : '');
+function saveRoutePts(k){
+  const a = state.routePts[k] || [];
+  store.set('mq_routepts_'+k, a.length ? JSON.stringify(a) : '');
 }
-function startPickVia(k){
-  pickingViaFor = k;
-  if(map) map.setOptions({ draggableCursor:'crosshair' });
-  setStatus('Click the map to route ' + ORIGINS[k].label + ' through that point');
-}
-function cancelPickVia(){
-  pickingViaFor = null;
-  if(map) map.setOptions({ draggableCursor:null });
-}
-function clearVia(k){
-  delete state.vias[k];
-  saveVia(k);
-  renderDetour();
+/* drop the dragged route for an origin and re-fetch Google's default */
+function resetRoute(k){
+  state.routePts[k] = [];
+  saveRoutePts(k);
   recomputeOrigin(k);
 }
 async function recomputeOrigin(k){
-  const destObj = destinationParam();
-  if(!destObj) return;
+  const dest = directionsDestination();
+  if(!dest) return;
   setStatus('Updating ' + ORIGINS[k].label + ' route…');
   try{
-    const routes = await routeRequest(ORIGINS[k].address, destObj, state.vias[k]);
-    state.results[k] = { routes, idx:0, err:null };
+    const result = await routeFor(k);
+    if(!result || !result.routes || !result.routes.length) throw new Error('ZERO_RESULTS');
+    showRoute(k, result, 0);
   }catch(e){
-    state.results[k] = { routes:null, idx:0, err:e.message };
+    state.results[k] = { routes:null, idx:0, err:dirErrMsg(e), dir:null };
+    if(renderers[k]) renderers[k].setMap(null);
   }
   const okCount = Object.values(state.results).filter(r=>r.routes).length;
   setStatus(okCount ? 'Quote ready' : 'Routing failed', okCount?'ok':'err');
   render();
-}
-
-/* ============================================================
-   DETROIT LAKES DETOUR  —  Co Rd 144 west of the transfer station is
-   impassable. Google has no "avoid this road" option, so the only way
-   to keep trucks off it is to force routes through a detour point.
-   This reuses the per-origin waypoint (state.vias.detroitLakes): a
-   stopover waypoint that genuinely re-routes the trip, not just a
-   pass-through. Set once, applies to every Detroit Lakes quote.
-   ============================================================ */
-function renderDetour(){
-  const box = el("noGoStatus");
-  if(!box) return;
-  if(!map){
-    box.innerHTML = "<div class=\"o-meta\">Add your Google Maps key below, then you can set the detour point.</div>";
-    return;
-  }
-  const v = state.vias && state.vias.detroitLakes;
-  if(v){
-    box.innerHTML =
-      "<div class=\"nogo-set\"><span class=\"nogo-dot\"></span>"
-      + "<span>Detour point set. Every Detroit Lakes quote is forced through it "
-      + "&mdash; drag the white point on the map to fine-tune the route.</span></div>"
-      + "<div class=\"nogo-btns\">"
-      + "<button class=\"lnk\" id=\"detourMove\">move on map</button>"
-      + "<button class=\"lnk\" id=\"detourClear\">clear detour</button></div>";
-    el("detourMove").addEventListener("click",()=>startPickVia("detroitLakes"));
-    el("detourClear").addEventListener("click",()=>clearVia("detroitLakes"));
-  }else{
-    box.innerHTML =
-      "<div class=\"o-meta\">No detour set &mdash; Detroit Lakes routes use Google&#39;s "
-      + "default, which runs down Co Rd 144.</div>"
-      + "<div class=\"nogo-btns\">"
-      + "<button class=\"btn-ghost btn-sm\" id=\"detourSet\">Mark the detour point on the map</button></div>";
-    el("detourSet").addEventListener("click",()=>startPickVia("detroitLakes"));
-  }
 }
 
 /* ============================================================
@@ -1030,10 +1014,12 @@ function markerCircle(pos,color,label){
     }
   });
 }
-function drawMap(){
+/* The DirectionsRenderers draw the route lines themselves. drawMap only
+   places the origin / destination markers and fits the viewport. */
+function drawMap(fit){
   if(!map) return;
   clearMap();
-  const ok = ORDER.filter(k=>state.results[k] && state.results[k].routes);
+  const ok = ORDER.filter(k=>state.results[k] && state.results[k].routes && state.results[k].dir);
   if(!ok.length) return;
 
   const bounds = new google.maps.LatLngBounds();
@@ -1042,44 +1028,13 @@ function drawMap(){
   ok.forEach(k=>{
     const o = ORIGINS[k];
     const r = state.results[k];
-
-    r.routes.forEach((rt,j)=>{
-      const sel = j===r.idx;
-      const pl = new google.maps.Polyline({
-        path: rt.path, map,
-        strokeColor:o.color,
-        strokeOpacity: sel?0.95:0.30,
-        strokeWeight: sel?6:5,
-        zIndex: sel?5:1
-      });
-      if(!sel) pl.addListener('click',()=>{ r.idx=j; render(); });
-      mapLayers.push(pl);
-    });
-
-    const chosen = r.routes[r.idx];
-    chosen.path.forEach(p=>bounds.extend(p));
-    mapLayers.push(markerCircle(chosen.path[0], o.color, o.short));
-    destPos = chosen.path[chosen.path.length-1];
-
-    // draggable route waypoint
-    if(state.vias[k]){
-      const v = state.vias[k];
-      const vm = new google.maps.Marker({
-        position:{lat:v.lat,lng:v.lng}, map, draggable:true, zIndex:30,
-        title:'Route waypoint for '+o.label+' — drag to fine-tune',
-        icon:{
-          path: google.maps.SymbolPath.CIRCLE,
-          scale:8, fillColor:'#ffffff', fillOpacity:1,
-          strokeColor:o.color, strokeWeight:4
-        }
-      });
-      vm.addListener('dragend', ev=>{
-        state.vias[k] = { lat:ev.latLng.lat(), lng:ev.latLng.lng() };
-        saveVia(k);
-        recomputeOrigin(k);
-      });
-      mapLayers.push(vm);
-    }
+    const rt = r.dir.routes[r.idx] || r.dir.routes[0];
+    if(!rt || !rt.legs || !rt.legs.length) return;
+    const first = rt.legs[0];
+    const last  = rt.legs[rt.legs.length-1];
+    mapLayers.push(markerCircle(first.start_location, o.color, o.short));
+    destPos = last.end_location;
+    if(rt.bounds) bounds.union(rt.bounds);
   });
 
   if(destPos){
@@ -1104,7 +1059,7 @@ function drawMap(){
     }
     mapLayers.push(dm);
   }
-  map.fitBounds(bounds,72);
+  if(fit!==false && !bounds.isEmpty()) map.fitBounds(bounds,72);
 }
 
 /* ============================================================
@@ -1130,8 +1085,8 @@ function flashResults(msg){
   el('toast').style.display='none';
 }
 
-function render(){
-  drawMap();
+function render(ropts){
+  drawMap(ropts && ropts.fit===false ? false : true);
   const body = el('resultsBody');
   const ok = ORDER.filter(k=>state.results[k] && state.results[k].routes);
   const errs = ORDER.filter(k=>state.results[k] && state.results[k].err);
@@ -1197,14 +1152,15 @@ function render(){
           </div>
         </div>
         <div class="qc-body">
-          ${r.routes.length>1?`<select data-route="${k}">${opts}</select>`:`<div class="o-meta">${state.vias[k]?'Routing through your waypoint':'Single route available'}</div>`}
-          <div class="via-row">
-            ${state.vias[k]
-              ? `<span class="via-tag"><span style="color:${o.color}">●</span> Custom waypoint set</span>
-                 <button class="lnk" data-via-move="${k}">move on map</button>
-                 <button class="lnk" data-via-clear="${k}">clear</button>`
-              : `<button class="lnk" data-via-set="${k}">＋ Force route through a point</button>`}
-          </div>
+          ${r.routes.length>1
+            ? `<select data-route="${k}">${opts}</select>`
+            : `<div class="o-meta">${(state.routePts[k]&&state.routePts[k].length)?'Custom route — dragged':'Single route available'}</div>`}
+          ${(state.routePts[k]&&state.routePts[k].length)
+            ? `<div class="via-row">
+                 <span class="via-tag"><span style="color:${o.color}">●</span> Route hand-adjusted</span>
+                 <button class="lnk" data-route-reset="${k}">use Google's default</button>
+               </div>`
+            : ''}
           <div class="leg">
             <span>One way: <b>${miles.toFixed(1)} mi</b></span>
             <span>Drive time: <b>${rt.durationText}</b></span>
@@ -1215,7 +1171,7 @@ function render(){
             <div class="calc-row total"><span>${single?'Quote total':o.label+' total'} <span style="font-weight:400;color:var(--muted);font-size:11px">(rounded to $5)</span></span><span class="mono">${usd.format(q.total)}</span></div>
           </div>
           <div style="margin-top:11px">
-            <a href="https://www.google.com/maps/dir/?api=1&origin=${encodeURIComponent(o.address)}&destination=${encodeURIComponent(destForLink())}${state.vias[k]?'&waypoints='+state.vias[k].lat+','+state.vias[k].lng:''}&travelmode=driving"
+            <a href="https://www.google.com/maps/dir/?api=1&origin=${encodeURIComponent(o.address)}&destination=${encodeURIComponent(destForLink())}${gmapsWaypoints(k)}&travelmode=driving"
                target="_blank" rel="noopener" style="font-size:12px;font-weight:700;color:${o.color}">
                Open this route in Google Maps ↗
             </a>
@@ -1242,16 +1198,15 @@ function render(){
 
   body.querySelectorAll('select[data-route]').forEach(sel=>{
     sel.addEventListener('change',()=>{
-      state.results[sel.dataset.route].idx = parseInt(sel.value,10);
+      const k = sel.dataset.route;
+      const j = parseInt(sel.value,10);
+      state.results[k].idx = j;
+      if(renderers[k]) renderers[k].setRouteIndex(j);   // same result object → not treated as a drag
       render();
     });
   });
-  body.querySelectorAll('[data-via-set]').forEach(b=>
-    b.addEventListener('click',()=>startPickVia(b.dataset.viaSet)));
-  body.querySelectorAll('[data-via-move]').forEach(b=>
-    b.addEventListener('click',()=>startPickVia(b.dataset.viaMove)));
-  body.querySelectorAll('[data-via-clear]').forEach(b=>
-    b.addEventListener('click',()=>clearVia(b.dataset.viaClear)));
+  body.querySelectorAll('[data-route-reset]').forEach(b=>
+    b.addEventListener('click',()=>resetRoute(b.dataset.routeReset)));
 
   const cBtn=el('copyBtn'); if(cBtn) cBtn.addEventListener('click', copySummary);
   const pBtn=el('printBtn'); if(pBtn) pBtn.addEventListener('click', printQuote);
@@ -1265,7 +1220,7 @@ function render(){
   const toast = el('toast');
   if(ok.length){
     toast.style.display='block';
-    toast.textContent = 'Tip: use "Force route through a point" to make a route follow a specific highway, then drag the white waypoint to fine-tune.';
+    toast.textContent = 'Tip: if a route goes down a closed road, grab the route line on the map and drag it onto the road you want — it reroutes and the mileage updates. The fix is remembered for that origin.';
   }else{
     toast.style.display='none';
   }
@@ -1608,11 +1563,10 @@ renderService();
 buildRateModes();
 
 buildOrigins();
-loadVias();
+loadRoutePts();
 loadDestPin();
 loadLog();
 renderDestRow();
-renderDetour();
 renderLog();
 
 const savedKey = store.get('mq_apikey');
@@ -1621,13 +1575,10 @@ const savedDest = store.get('mq_dest');
 if(savedDest && !state.destPin){ destInput.value = savedDest; }
 
 document.addEventListener('keydown',e=>{
-  if(e.key==='Escape'){
-    if(pickingViaFor || pickingDest){
-      cancelPickVia();
-      pickingDest = false;
-      if(map) map.setOptions({ draggableCursor:null });
-      setStatus('Ready','ok');
-    }
+  if(e.key==='Escape' && pickingDest){
+    pickingDest = false;
+    if(map) map.setOptions({ draggableCursor:null });
+    setStatus('Ready','ok');
   }
 });
 
@@ -1645,6 +1596,7 @@ el('resetBtn').addEventListener('click',()=>{
   saveDestPin();
   renderDestRow();
   clearMap();
+  hideAllRenderers();
   el('resultsBody').innerHTML='<div class="empty">Pick your origin(s), enter a destination, and hit <b>Calculate Quote</b>.</div>';
   el('toast').style.display='none';
   if(map){ map.setCenter({lat:46.70,lng:-95.71}); map.setZoom(9); }
