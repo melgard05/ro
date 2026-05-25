@@ -1027,6 +1027,40 @@ function markerCircle(pos,color,label){
     }
   });
 }
+
+/* floating pill showing one-way mileage + drive time, pinned on a route.
+   Selected route -> solid colored pill (non-clickable so the line stays
+   draggable). Alternative route -> white pill, click to select it. */
+let _tagCtx = null;
+function routeTag(pos, text, color, selected, k, j){
+  if(!_tagCtx) _tagCtx = document.createElement('canvas').getContext('2d');
+  _tagCtx.font = '700 11.5px Arial, sans-serif';
+  const ph = 22, tw = Math.ceil(_tagCtx.measureText(text).width);
+  const w = tw + 22, h = 27;
+  const esc = String(text).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+  const fill   = selected ? color     : '#ffffff';
+  const txtCol = selected ? '#ffffff' : '#1d201a';
+  const stroke = selected ? '#ffffff' : color;
+  const svg =
+    "<svg xmlns='http://www.w3.org/2000/svg' width='"+w+"' height='"+h+"'>"+
+      "<rect x='3' y='4' width='"+(w-6)+"' height='"+ph+"' rx='"+(ph/2)+"' fill='rgba(0,0,0,0.30)'/>"+
+      "<rect x='1.6' y='1.6' width='"+(w-3.2)+"' height='"+ph+"' rx='"+(ph/2)+"' fill='"+fill+
+        "' stroke='"+stroke+"' stroke-width='1.7'/>"+
+      "<text x='"+(w/2)+"' y='"+(ph/2+5.6)+"' font-family='Arial,Helvetica,sans-serif' "+
+        "font-size='11.5' font-weight='700' fill='"+txtCol+"' text-anchor='middle'>"+esc+"</text>"+
+    "</svg>";
+  const m = new google.maps.Marker({
+    position: pos, map, clickable: !selected,
+    zIndex: selected ? 32 : 30,
+    icon:{
+      url:'data:image/svg+xml;charset=UTF-8,'+encodeURIComponent(svg),
+      scaledSize:new google.maps.Size(w,h),
+      anchor:new google.maps.Point(w/2,h/2)
+    }
+  });
+  if(!selected) m.addListener('click', ()=>selectRoute(k,j));
+  return m;
+}
 /* The DirectionsRenderers draw the route lines themselves. drawMap only
    places the origin / destination markers and fits the viewport. */
 function drawMap(fit){
@@ -1062,6 +1096,18 @@ function drawMap(fit){
     const last  = rt.legs[rt.legs.length-1];
     mapLayers.push(markerCircle(first.start_location, o.color, o.short));
     destPos = last.end_location;
+
+    // one-way mileage + time tag on every route
+    const n = r.dir.routes.length;
+    r.dir.routes.forEach((route,j)=>{
+      const path = route.overview_path;
+      const nr = r.routes[j];
+      if(!path || !path.length || !nr) return;
+      const frac = n===1 ? 0.5 : 0.5 + ((j%3)-1)*0.13;   // stagger so pills don't stack
+      const pt = path[Math.min(path.length-1, Math.max(0, Math.round(path.length*frac)))];
+      mapLayers.push(routeTag(pt, nr.miles.toFixed(1)+' mi · '+nr.durationText,
+                              o.routeColor, j===r.idx, k, j));
+    });
   });
 
   if(destPos){
