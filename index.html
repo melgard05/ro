@@ -868,6 +868,14 @@ function showRoute(k, dirResult, idx){
   rend.setDirections(dirResult);
   rend.setRouteIndex(state.results[k].idx);
 }
+/* choose an alternative route — from a map click or the quote-card dropdown */
+function selectRoute(k, j){
+  const r = state.results[k];
+  if(!r || !r.routes || j<0 || j>=r.routes.length || j===r.idx) return;
+  r.idx = j;
+  if(renderers[k]) renderers[k].setRouteIndex(j);   // same result object → not a drag
+  render();
+}
 
 function destLabel(){
   if(state.destPin) return 'Map pin (' + state.destPin.lat.toFixed(5) + ', ' + state.destPin.lng.toFixed(5) + ')';
@@ -1033,13 +1041,27 @@ function drawMap(fit){
   ok.forEach(k=>{
     const o = ORIGINS[k];
     const r = state.results[k];
+
+    // alternative routes — faded, clickable; the selected one is drawn by the renderer
+    r.dir.routes.forEach((route,j)=>{
+      if(route.bounds) bounds.union(route.bounds);     // fit the viewport to every option
+      if(j===r.idx || !route.overview_path) return;
+      const alt = new google.maps.Polyline({
+        path: route.overview_path, map, clickable:true, zIndex:3,
+        strokeColor:o.routeColor, strokeOpacity:0.42, strokeWeight:5
+      });
+      alt.addListener('mouseover',()=>alt.setOptions({strokeOpacity:0.8, strokeWeight:6}));
+      alt.addListener('mouseout', ()=>alt.setOptions({strokeOpacity:0.42,strokeWeight:5}));
+      alt.addListener('click',    ()=>selectRoute(k,j));
+      mapLayers.push(alt);
+    });
+
     const rt = r.dir.routes[r.idx] || r.dir.routes[0];
     if(!rt || !rt.legs || !rt.legs.length) return;
     const first = rt.legs[0];
     const last  = rt.legs[rt.legs.length-1];
     mapLayers.push(markerCircle(first.start_location, o.color, o.short));
     destPos = last.end_location;
-    if(rt.bounds) bounds.union(rt.bounds);
   });
 
   if(destPos){
@@ -1158,7 +1180,8 @@ function render(ropts){
         </div>
         <div class="qc-body">
           ${r.routes.length>1
-            ? `<select data-route="${k}">${opts}</select>`
+            ? `<select data-route="${k}">${opts}</select>
+               <div class="o-meta" style="margin-top:5px">${r.routes.length} routes found — tap a faded line on the map to compare</div>`
             : `<div class="o-meta">${(state.routePts[k]&&state.routePts[k].length)?'Custom route — dragged':'Single route available'}</div>`}
           ${(state.routePts[k]&&state.routePts[k].length)
             ? `<div class="via-row">
@@ -1203,11 +1226,7 @@ function render(ropts){
 
   body.querySelectorAll('select[data-route]').forEach(sel=>{
     sel.addEventListener('change',()=>{
-      const k = sel.dataset.route;
-      const j = parseInt(sel.value,10);
-      state.results[k].idx = j;
-      if(renderers[k]) renderers[k].setRouteIndex(j);   // same result object → not treated as a drag
-      render();
+      selectRoute(sel.dataset.route, parseInt(sel.value,10));
     });
   });
   body.querySelectorAll('[data-route-reset]').forEach(b=>
