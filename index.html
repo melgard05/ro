@@ -156,27 +156,29 @@
   .dest-pin-row{display:flex;align-items:center;gap:6px;flex-wrap:wrap;margin-top:7px}
   input.is-off{background:#efece3;color:var(--muted);cursor:not-allowed}
 
-  /* ---- recent destination rows inside the lookup dropdown ---- */
-  .ac-pin-rec{border-radius:2px;background:var(--muted);
-    width:8px;height:8px;box-shadow:inset 0 0 0 2px var(--surface)}
-  .ac-text{flex:1;min-width:0}
-  .ac-x{flex:none;align-self:center;width:18px;height:18px;border-radius:50%;
-    display:flex;align-items:center;justify-content:center;font-size:14px;line-height:1;
-    background:#e7e3d8;color:var(--muted)}
-  .ac-x:hover{background:#dcb6b1;color:#7a2e26}
+  /* ---- recent destinations dropdown ---- */
+  .recent-select{width:100%;margin-top:8px;padding:9px 11px;border:1px solid var(--line-strong);
+    border-radius:9px;font-family:inherit;font-size:13px;font-weight:600;color:var(--ink);
+    background:#fcfbf7;cursor:pointer}
+  .recent-select:focus{outline:none;border-color:var(--pine);box-shadow:0 0 0 3px rgba(47,107,65,.13)}
 
-  /* ---- create-quote modal ---- */
-  .modal-wrap{display:none;position:fixed;inset:0;z-index:200;
-    background:rgba(20,24,20,.55);align-items:center;justify-content:center;padding:20px}
-  .modal-wrap.open{display:flex}
-  .modal-card{background:var(--surface);border-radius:14px;width:100%;max-width:430px;
-    box-shadow:0 18px 50px rgba(0,0,0,.4);overflow:hidden}
-  .modal-h{padding:15px 20px;font-size:15px;font-weight:800;color:var(--ink);
-    background:#f7f5ee;border-bottom:1px solid var(--line)}
-  .modal-h .modal-sub{display:block;font-size:11.5px;font-weight:600;color:var(--muted);margin-top:2px}
-  .modal-b{padding:18px 20px}
-  .modal-f{padding:14px 20px;display:flex;gap:8px;justify-content:flex-end;
-    border-top:1px solid var(--line);background:#faf8f2}
+  /* ---- create-quote page ---- */
+  .page{display:none;position:fixed;inset:0;z-index:160;background:var(--paper);
+    background-image:radial-gradient(rgba(28,31,26,.018) 1px,transparent 1px);
+    background-size:22px 22px;overflow-y:auto}
+  .page.open{display:block}
+  .page-bar{display:flex;align-items:center;gap:14px;padding:13px 20px;
+    background:var(--surface);border-bottom:1px solid var(--line-strong);
+    position:sticky;top:0;z-index:2}
+  .page-title{font-size:15px;font-weight:800;color:var(--ink)}
+  .page-body{max-width:560px;margin:0 auto;padding:20px 18px 50px}
+  .page-body .block{margin-bottom:16px}
+  .recap-line{font-size:13px;color:var(--ink);line-height:1.5;margin-bottom:5px}
+  .recap-line b{font-weight:800}
+  .recap-rows{margin-top:10px;border-top:1px solid var(--line);padding-top:8px}
+  .recap-row{display:flex;justify-content:space-between;gap:14px;font-size:13px;padding:3px 0}
+  .recap-total{display:flex;justify-content:space-between;margin-top:8px;padding-top:9px;
+    border-top:1.5px solid var(--line-strong);font-size:16px;font-weight:800;color:var(--pine)}
   .ac-list{
     position:absolute;left:0;right:0;top:calc(100% + 5px);z-index:50;
     background:var(--surface);border:1px solid var(--line-strong);border-radius:10px;
@@ -342,7 +344,7 @@
   #printSheet{display:none}
   @media print{
     body{background:#fff;background-image:none}
-    body>header,body>.layout,body>#quoteModal{display:none !important}
+    body>header,body>.layout,body>#quotePage{display:none !important}
     #printSheet{display:block !important}
   }
   .ps-wrap{
@@ -423,6 +425,9 @@
         <input type="text" id="dest" placeholder="Start typing an address or ZIP code…" autocomplete="off">
         <div class="ac-list" id="acList"></div>
         <div class="ac-msg" id="acMsg"></div>
+        <div id="recentWrap" style="display:none">
+          <select id="recentSelect" class="recent-select"></select>
+        </div>
         <div class="dest-pin-row" id="destPinRow"></div>
       </div>
 
@@ -489,23 +494,30 @@
 <!-- printable quote sheet — hidden on screen, shown only when printing -->
 <div id="printSheet"></div>
 
-<!-- ===== CREATE QUOTE MODAL ===== -->
-<div class="modal-wrap" id="quoteModal">
-  <div class="modal-card">
-    <div class="modal-h">Create Quote
-      <span class="modal-sub">Customer details for the printed quote sheet</span>
+<!-- ===== CREATE QUOTE PAGE ===== -->
+<div class="page" id="quotePage">
+  <div class="page-bar">
+    <button class="btn-ghost btn-sm" id="quoteBack">← Back to calculator</button>
+    <span class="page-title">Create Quote</span>
+  </div>
+  <div class="page-body">
+    <div class="block">
+      <div class="block-h"><span>Quote Summary</span></div>
+      <div class="block-b" id="quoteRecap"></div>
     </div>
-    <div class="modal-b">
-      <label class="fld" for="custName">Customer name</label>
-      <input type="text" id="custName" placeholder="Customer or company name" autocomplete="off">
-      <label class="fld" for="custAddr" style="margin-top:11px">Customer address</label>
-      <input type="text" id="custAddr" placeholder="Customer address (optional)" autocomplete="off">
-      <label class="fld" for="quoteNo" style="margin-top:11px">Quote #</label>
-      <input type="text" id="quoteNo" autocomplete="off" style="max-width:160px">
-    </div>
-    <div class="modal-f">
-      <button class="btn-ghost" id="quoteCancel">Cancel</button>
-      <button class="btn-primary" id="quoteCreate">Create &amp; Print</button>
+    <div class="block">
+      <div class="block-h"><span>Customer &amp; Document Details</span></div>
+      <div class="block-b">
+        <label class="fld" for="custName">Customer name</label>
+        <input type="text" id="custName" placeholder="Customer or company name" autocomplete="off">
+        <label class="fld" for="custAddr" style="margin-top:11px">Customer address</label>
+        <input type="text" id="custAddr" placeholder="Customer address (optional)" autocomplete="off">
+        <label class="fld" for="quoteNo" style="margin-top:11px">Quote #</label>
+        <input type="text" id="quoteNo" autocomplete="off" style="max-width:160px">
+        <div style="margin-top:18px">
+          <button class="btn-primary" id="quotePrint">Print Quote</button>
+        </div>
+      </div>
     </div>
   </div>
 </div>
@@ -1021,26 +1033,37 @@ function renderDestRow(){
 }
 
 /* ============================================================
-   RECENT DESTINATIONS  —  recently quoted addresses, shown inside
-   the destination lookup dropdown. Capped, de-duplicated, stored
-   in this browser.
+   RECENT DESTINATIONS  —  recently quoted addresses, offered in a
+   dropdown next to the destination field. Stored in this browser.
    ============================================================ */
 let recents = [];
 function loadRecents(){
   try{ const a = JSON.parse(store.get('mq_recents')||'[]'); if(Array.isArray(a)) recents = a; }catch(e){}
 }
-function saveRecents(){ store.set('mq_recents', JSON.stringify(recents.slice(0,8))); }
+function saveRecents(){ store.set('mq_recents', JSON.stringify(recents.slice(0,10))); }
 function addRecent(addr){
   addr = (addr||'').trim();
   if(!addr) return;
   recents = recents.filter(a=> a.toLowerCase() !== addr.toLowerCase());
   recents.unshift(addr);
-  recents = recents.slice(0,8);
+  recents = recents.slice(0,10);
   saveRecents();
+  renderRecentSelect();
 }
-function removeRecent(addr){
-  recents = recents.filter(a=> a.toLowerCase() !== String(addr).toLowerCase());
-  saveRecents();
+function renderRecentSelect(){
+  const wrap = el('recentWrap'), sel = el('recentSelect');
+  if(!wrap || !sel) return;
+  if(!recents.length){ wrap.style.display='none'; sel.innerHTML=''; return; }
+  wrap.style.display = 'block';
+  sel.innerHTML = '';
+  const ph = document.createElement('option');
+  ph.value=''; ph.textContent='↻  Recent destinations…';
+  sel.appendChild(ph);
+  recents.forEach(a=>{
+    const o = document.createElement('option');
+    o.value=a; o.textContent=a; sel.appendChild(o);
+  });
+  sel.value='';
 }
 
 /* ============================================================
@@ -1062,14 +1085,32 @@ function commitQuoteNo(){
 }
 
 /* ============================================================
-   CREATE-QUOTE MODAL  —  collects customer details, then prints
+   CREATE-QUOTE PAGE  —  a dedicated screen for customer details
    ============================================================ */
-function openQuoteModal(){
-  if(!gatherQuote()) return;            // need a calculated quote first
-  el('quoteModal').classList.add('open');
-  setTimeout(()=>{ const f=el('custName'); if(f) f.focus(); }, 30);
+function renderQuoteRecap(){
+  const g = gatherQuote();
+  if(!g) return;
+  const rows = g.origins.map(o=>
+    '<div class="recap-row"><span>'+escapeHtml(o.label)+' — '+o.miles.toFixed(1)+
+    ' mi one way</span><span class="mono">'+usd.format(o.total)+'</span></div>').join('');
+  el('quoteRecap').innerHTML =
+    '<div class="recap-line"><b>Service:</b> '+escapeHtml(g.serviceName)+
+      (g.rateMode?' — '+escapeHtml(g.rateMode)+' rate':'')+'</div>'+
+    '<div class="recap-line"><b>Dispatched from:</b> '+
+      g.origins.map(o=>escapeHtml(o.address)).join('<br><span style="padding-left:96px"></span>')+'</div>'+
+    '<div class="recap-line"><b>Destination:</b> '+(escapeHtml(g.dest)||'—')+'</div>'+
+    '<div class="recap-rows">'+rows+'</div>'+
+    '<div class="recap-total"><span>'+(g.averaged?'Averaged Quote':'Quote Total')+
+      '</span><span>'+usd.format(g.total)+'</span></div>';
 }
-function closeQuoteModal(){ el('quoteModal').classList.remove('open'); }
+function openQuotePage(){
+  if(!gatherQuote()) return;            // need a calculated quote first
+  renderQuoteRecap();
+  el('quotePage').classList.add('open');
+  window.scrollTo(0,0);
+  setTimeout(()=>{ const f=el('custName'); if(f) f.focus(); }, 40);
+}
+function closeQuotePage(){ el('quotePage').classList.remove('open'); }
 
 /* ============================================================
    DRAGGED-ROUTE PERSISTENCE  —  the via-points the user pulls a
@@ -1381,7 +1422,7 @@ function render(ropts){
     b.addEventListener('click',()=>resetRoute(b.dataset.routeReset)));
 
   const cBtn=el('copyBtn'); if(cBtn) cBtn.addEventListener('click', copySummary);
-  const pBtn=el('printBtn'); if(pBtn) pBtn.addEventListener('click', openQuoteModal);
+  const pBtn=el('printBtn'); if(pBtn) pBtn.addEventListener('click', openQuotePage);
   const lBtn=el('logBtn');
   if(lBtn) lBtn.addEventListener('click',()=>{
     addToLog();
@@ -1592,6 +1633,9 @@ function buildPrintHTML(g){
            g.customerAddr ? `<div style="font-weight:600;font-size:12px;color:#6c7065;margin-top:2px">${escapeHtml(g.customerAddr)}</div>` : ''}</div>
        </div></div>`
     : '';
+  const originLine = g.origins
+    .map(o=>`${escapeHtml(o.label)} — ${escapeHtml(o.address)}`)
+    .join('<br>');
   return `<div class="ps-wrap">
     <div class="ps-top">
       <div>
@@ -1605,6 +1649,9 @@ function buildPrintHTML(g){
       </div>
     </div>
     ${preparedFor}
+    <div class="ps-row">
+      <div style="flex:1"><div class="ps-fld-l">Dispatched From</div><div class="ps-fld-v">${originLine}</div></div>
+    </div>
     <div class="ps-row">
       <div><div class="ps-fld-l">Service</div><div class="ps-fld-v">${escapeHtml(g.serviceName + (g.rateMode ? ' — '+g.rateMode+' rate' : ''))}</div></div>
       <div><div class="ps-fld-l">Destination</div><div class="ps-fld-v">${escapeHtml(g.dest)||'—'}</div></div>
@@ -1648,35 +1695,20 @@ function closeAc(){
   acList.classList.remove('open');
   acList.innerHTML = '';
 }
-/* show recently quoted addresses in the lookup dropdown */
-function showRecents(){
-  if(!recents.length){ closeAc(); return; }
-  acItems = recents.map(a=>({ main:a, sec:'Recent destination', full:a, recent:true }));
-  acActive = -1;
-  setAcMsg('');
-  paintAc();
-}
 function paintAc(){
   if(!acItems.length){ closeAc(); return; }
   acList.innerHTML = acItems.map((it,i)=>`
     <div class="ac-item${i===acActive?' active':''}" data-i="${i}">
-      <span class="ac-pin${it.recent?' ac-pin-rec':''}"></span>
-      <span class="ac-text">
+      <span class="ac-pin"></span>
+      <span>
         <span class="ac-main">${escapeHtml(it.main)}</span>
         ${it.sec?`<br><span class="ac-sec">${escapeHtml(it.sec)}</span>`:''}
       </span>
-      ${it.recent?`<span class="ac-x" data-x="${i}" title="Remove from recent">\u00d7</span>`:''}
     </div>`).join('');
   acList.classList.add('open');
   acList.querySelectorAll('.ac-item').forEach(node=>{
     node.addEventListener('mousedown',e=>{        // mousedown fires before blur
       e.preventDefault();
-      const xb = e.target.closest('.ac-x');
-      if(xb){
-        const it = acItems[parseInt(xb.dataset.x,10)];
-        if(it){ removeRecent(it.full); showRecents(); }
-        return;
-      }
       chooseAc(parseInt(node.dataset.i,10));
     });
   });
@@ -1687,10 +1719,6 @@ async function chooseAc(i){
   destInput.value = it.full;            // instant feedback with the prediction text
   store.set('mq_dest', it.full);
   closeAc();
-  if(it.recent){                        // a previously-quoted address — quote it now
-    if(!el('calcBtn').disabled) calculate();
-    return;
-  }
   /* upgrade to the full formatted address — this is what carries the ZIP code,
      which the autocomplete prediction text usually omits */
   if(it.pred && typeof it.pred.toPlace === 'function'){
@@ -1736,13 +1764,9 @@ async function fetchAc(q){
   }
 }
 
-destInput.addEventListener('focus',()=>{
-  if(destInput.value.trim()==='') showRecents();
-});
 destInput.addEventListener('input',()=>{
   const q = destInput.value.trim();
   clearTimeout(acTimer);
-  if(q.length===0){ showRecents(); return; }
   if(q.length < 3){ closeAc(); return; }
   acTimer = setTimeout(()=>fetchAc(q), 220);
 });
@@ -1782,6 +1806,7 @@ loadLog();
 loadRecents();
 renderDestRow();
 renderLog();
+renderRecentSelect();
 newQuoteNo();
 
 const savedKey = store.get('mq_apikey');
@@ -1789,15 +1814,22 @@ if(savedKey){ el('apiKey').value = savedKey; loadGoogleMaps(savedKey); }
 const savedDest = store.get('mq_dest');
 if(savedDest && !state.destPin){ destInput.value = savedDest; }
 
-el('quoteCancel').addEventListener('click', closeQuoteModal);
-el('quoteCreate').addEventListener('click',()=>{ closeQuoteModal(); printQuote(); });
-el('quoteModal').addEventListener('mousedown',e=>{
-  if(e.target === el('quoteModal')) closeQuoteModal();   // click the backdrop to dismiss
+el('recentSelect').addEventListener('change',()=>{
+  const v = el('recentSelect').value;
+  if(!v) return;
+  state.destPin = null;
+  saveDestPin();
+  destInput.value = v;
+  renderDestRow();
+  el('recentSelect').value = '';
+  calculate();
 });
+el('quoteBack').addEventListener('click', closeQuotePage);
+el('quotePrint').addEventListener('click', printQuote);
 
 document.addEventListener('keydown',e=>{
   if(e.key!=='Escape') return;
-  if(el('quoteModal').classList.contains('open')){ closeQuoteModal(); return; }
+  if(el('quotePage').classList.contains('open')){ closeQuotePage(); return; }
   if(pickingDest){
     pickingDest = false;
     if(map) map.setOptions({ draggableCursor:null });
