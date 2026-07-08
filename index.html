@@ -179,6 +179,22 @@
   .recap-row{display:flex;justify-content:space-between;gap:14px;font-size:13px;padding:3px 0}
   .recap-total{display:flex;justify-content:space-between;margin-top:8px;padding-top:9px;
     border-top:1.5px solid var(--line-strong);font-size:16px;font-weight:800;color:var(--pine)}
+
+  /* ---- suggestion textarea ---- */
+  textarea.sugg{width:100%;min-height:90px;resize:vertical;padding:10px 12px;
+    border:1px solid var(--line-strong);border-radius:9px;background:#fcfbf7;
+    font-family:inherit;font-size:14px;line-height:1.45;color:var(--ink)}
+  textarea.sugg:focus{outline:none;border-color:var(--pine);
+    box-shadow:0 0 0 3px rgba(47,107,65,.13)}
+
+  /* ---- floating notification (bottom-right) ---- */
+  .notif{position:fixed;right:22px;bottom:22px;z-index:250;
+    background:var(--pine);color:#fff;font-weight:700;font-size:13.5px;
+    padding:12px 17px;border-radius:10px;box-shadow:0 10px 30px rgba(0,0,0,.28);
+    display:flex;align-items:center;gap:10px;opacity:0;transform:translateY(10px);
+    transition:opacity .22s ease, transform .22s ease;pointer-events:none;max-width:340px}
+  .notif.on{opacity:1;transform:translateY(0);pointer-events:auto}
+  .notif .notif-ico{font-size:16px}
   .ac-list{
     position:absolute;left:0;right:0;top:calc(100% + 5px);z-index:50;
     background:var(--surface);border:1px solid var(--line-strong);border-radius:10px;
@@ -344,7 +360,7 @@
   #printSheet{display:none}
   @media print{
     body{background:#fff;background-image:none}
-    body>header,body>.layout,body>#quotePage{display:none !important}
+    body>header,body>.layout,body>#quotePage,body>#notif{display:none !important}
     #printSheet{display:block !important}
   }
   .ps-wrap{
@@ -519,7 +535,23 @@
         </div>
       </div>
     </div>
+    <div class="block">
+      <div class="block-h"><span>Suggestions &amp; Change Requests</span></div>
+      <div class="block-b">
+        <label class="fld" for="suggText">Anything not working right, or something you'd like added?</label>
+        <textarea class="sugg" id="suggText" placeholder="Type your suggestion or change request…"></textarea>
+        <div style="margin-top:11px;display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+          <button class="btn-ghost btn-sm" id="suggSend">Submit suggestion</button>
+          <button class="btn-ghost btn-sm" id="suggView" style="margin-left:auto">View saved</button>
+        </div>
+      </div>
+    </div>
   </div>
+</div>
+
+<!-- ===== FLOATING NOTIFICATION ===== -->
+<div class="notif" id="notif" role="status" aria-live="polite">
+  <span class="notif-ico">✓</span><span id="notifText"></span>
 </div>
 
 <script>
@@ -1111,6 +1143,59 @@ function openQuotePage(){
   setTimeout(()=>{ const f=el('custName'); if(f) f.focus(); }, 40);
 }
 function closeQuotePage(){ el('quotePage').classList.remove('open'); }
+
+/* ============================================================
+   NOTIFICATION  —  small floating confirmation, auto-dismisses
+   ============================================================ */
+let notifTimer = null;
+function notify(msg, ms){
+  const n = el('notif'), t = el('notifText');
+  if(!n || !t) return;
+  t.textContent = msg;
+  n.classList.add('on');
+  clearTimeout(notifTimer);
+  notifTimer = setTimeout(()=> n.classList.remove('on'), ms || 2600);
+}
+
+/* ============================================================
+   SUGGESTIONS / CHANGE REQUESTS  —  stored in this browser.
+   ============================================================ */
+function loadSuggestions(){
+  try{ const a = JSON.parse(store.get('mq_suggestions')||'[]'); return Array.isArray(a)?a:[]; }
+  catch(e){ return []; }
+}
+function saveSuggestion(){
+  const box = el('suggText');
+  const text = (box && box.value || '').trim();
+  if(!text){ notify('Type a suggestion first'); return; }
+  const list = loadSuggestions();
+  list.unshift({ ts: Date.now(), text });
+  store.set('mq_suggestions', JSON.stringify(list.slice(0,200)));
+  if(box) box.value = '';
+  notify('Suggestion saved — thanks!');
+}
+function viewSuggestions(){
+  const list = loadSuggestions();
+  if(!list.length){ notify('No suggestions saved yet'); return; }
+  const w = window.open('', '_blank');
+  if(!w){ notify('Pop-up blocked — allow pop-ups to view'); return; }
+  const rows = list.map(s=>{
+    const when = new Date(s.ts).toLocaleString('en-US');
+    const txt  = String(s.text).replace(/[&<>]/g, c=>({ '&':'&amp;','<':'&lt;','>':'&gt;' }[c]));
+    return '<tr><td style="white-space:nowrap;color:#6c7065;padding:8px 12px;border-bottom:1px solid #eee;vertical-align:top">'+
+             when+'</td><td style="padding:8px 12px;border-bottom:1px solid #eee;white-space:pre-wrap">'+txt+'</td></tr>';
+  }).join('');
+  w.document.write(
+    '<!doctype html><meta charset=utf-8><title>Saved Suggestions</title>'+
+    '<style>body{font-family:system-ui,sans-serif;padding:24px;color:#1d201a;max-width:900px;margin:0 auto}'+
+    'h1{font-size:19px;margin:0 0 14px}table{width:100%;border-collapse:collapse;font-size:14px;'+
+    'background:#fff;border:1px solid #e6e2d6;border-radius:8px;overflow:hidden}'+
+    'th{text-align:left;background:#f7f5ee;padding:9px 12px;border-bottom:1px solid #e6e2d6;font-size:12px;'+
+    'text-transform:uppercase;letter-spacing:.05em;color:#6c7065}</style>'+
+    '<h1>Saved Suggestions &amp; Change Requests ('+list.length+')</h1>'+
+    '<table><thead><tr><th>When</th><th>Suggestion</th></tr></thead><tbody>'+rows+'</tbody></table>');
+  w.document.close();
+}
 
 /* ============================================================
    DRAGGED-ROUTE PERSISTENCE  —  the via-points the user pulls a
@@ -1826,6 +1911,8 @@ el('recentSelect').addEventListener('change',()=>{
 });
 el('quoteBack').addEventListener('click', closeQuotePage);
 el('quotePrint').addEventListener('click', printQuote);
+el('suggSend').addEventListener('click', saveSuggestion);
+el('suggView').addEventListener('click', viewSuggestions);
 
 document.addEventListener('keydown',e=>{
   if(e.key!=='Escape') return;
