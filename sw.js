@@ -10,7 +10,7 @@
 /* Cache version — BUMP THIS STRING ON EVERY DEPLOY (keep it in step with
    APP_VERSION in index.html). Changing it is what makes the browser install
    a new worker, which triggers the "new version available" banner. */
-const CACHE = 'mqc-v1.6';
+const CACHE = 'mqc-v1.7';
 const SHELL = './';
 
 self.addEventListener('install', event => {
