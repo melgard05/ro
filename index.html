@@ -66,6 +66,23 @@
   }
   h1#svcTitle{font-size:29px;font-weight:800;letter-spacing:-.02em;line-height:1.08;margin:1px 0}
   .hd-sub{font-size:12.5px;opacity:.85;font-weight:500}
+  .hd-build{display:inline-block;margin-left:8px;font-size:10.5px;font-weight:700;
+    letter-spacing:.02em;opacity:.72;vertical-align:middle;
+    background:rgba(255,255,255,.16);padding:1px 7px;border-radius:999px;white-space:nowrap}
+
+  /* ---- update-available banner ---- */
+  .update-bar{position:fixed;left:0;right:0;bottom:0;z-index:300;
+    background:#1d3b26;color:#fff;display:none;align-items:center;gap:14px;
+    padding:12px 18px;box-shadow:0 -6px 22px rgba(0,0,0,.28);
+    font-size:13.5px;font-weight:600}
+  .update-bar.on{display:flex}
+  .update-bar .ub-txt{flex:1;min-width:0}
+  .update-bar .ub-txt b{font-weight:800}
+  .update-bar button{flex:none;font-family:inherit;font-weight:800;font-size:13px;
+    border:0;border-radius:8px;padding:8px 15px;cursor:pointer}
+  .update-bar .ub-go{background:#3fbf6a;color:#0d1f14}
+  .update-bar .ub-go:hover{background:#57cf80}
+  .update-bar .ub-x{background:transparent;color:#cfe6d7;padding:8px 6px}
   .hd-right{display:flex;flex-direction:column;align-items:flex-end;gap:10px}
 
   .svc-tabs{display:flex;gap:4px;background:rgba(255,255,255,.16);padding:4px;border-radius:11px}
@@ -406,7 +423,7 @@
   <div class="hd-left">
     <div class="hd-ico" id="hdIco"></div>
     <div>
-      <div class="hd-eyebrow">Mileage &amp; Service Quote</div>
+      <div class="hd-eyebrow">Mileage &amp; Service Quote<span class="hd-build" id="buildBadge"></span></div>
       <h1 id="svcTitle">Roll-Off</h1>
       <div class="hd-sub" id="subTitle">Perham &amp; Detroit Lakes · $6.00/mi one way</div>
     </div>
@@ -554,6 +571,13 @@
   <span class="notif-ico">✓</span><span id="notifText"></span>
 </div>
 
+<!-- ===== UPDATE-AVAILABLE BANNER ===== -->
+<div class="update-bar" id="updateBar" role="alert">
+  <span class="ub-txt"><b>A new version is available.</b> Refresh to get the latest.</span>
+  <button class="ub-go" id="updateGo">Refresh now</button>
+  <button class="ub-x" id="updateX" title="Dismiss">Later</button>
+</div>
+
 <script>
 /* ============================================================
    CONFIG
@@ -640,6 +664,10 @@ function applyService(svcKey){
 
 const METERS_PER_MILE = 1609.344;
 const usd = new Intl.NumberFormat('en-US',{style:'currency',currency:'USD'});
+
+/* Build identifier — bump this on every deploy. Shown in the header and
+   used to detect when a newer version has loaded. Format: vMAJOR.MINOR (YYYY-MM-DD) */
+const APP_VERSION = 'v1.6 (2026-07-16)';
 
 /* ---- safe localStorage (works on GitHub Pages; no-ops if blocked) ---- */
 const store = {
@@ -1949,14 +1977,69 @@ el('resetBtn').addEventListener('click',()=>{
 </script>
 
 <script>
+  /* show the build number in the header */
+  (function(){
+    var b = document.getElementById('buildBadge');
+    if(b && typeof APP_VERSION === 'string') b.textContent = APP_VERSION;
+  })();
+
   /* PWA: register the service worker so the app can be installed to a
      phone home screen or as a desktop app. Degrades gracefully — if
-     sw.js isn't deployed, the page still works as a normal web page. */
-  if('serviceWorker' in navigator){
+     sw.js isn't deployed, the page still works as a normal web page.
+
+     Update detection: when a new sw.js is deployed, the browser installs
+     it in the background. We watch for that and show a "new version"
+     banner so the user can refresh into the latest build. */
+  (function(){
+    if(!('serviceWorker' in navigator)) return;
+
+    var bar = document.getElementById('updateBar');
+    var reloading = false;
+
+    function showUpdateBar(worker){
+      if(!bar) return;
+      bar.classList.add('on');
+      var go = document.getElementById('updateGo');
+      var x  = document.getElementById('updateX');
+      if(go) go.onclick = function(){
+        // ask the waiting worker to take over, then reload on switch
+        if(worker) worker.postMessage({ type:'SKIP_WAITING' });
+        // fallback: reload anyway shortly
+        setTimeout(function(){ if(!reloading){ reloading=true; location.reload(); } }, 400);
+      };
+      if(x) x.onclick = function(){ bar.classList.remove('on'); };
+    }
+
     window.addEventListener('load', function(){
-      navigator.serviceWorker.register('sw.js').catch(function(){});
+      navigator.serviceWorker.register('sw.js').then(function(reg){
+        // a worker is already waiting (e.g. installed on a previous visit)
+        if(reg.waiting && navigator.serviceWorker.controller) showUpdateBar(reg.waiting);
+
+        // a new worker started installing — watch it reach "installed"
+        reg.addEventListener('updatefound', function(){
+          var nw = reg.installing;
+          if(!nw) return;
+          nw.addEventListener('statechange', function(){
+            if(nw.state === 'installed' && navigator.serviceWorker.controller){
+              showUpdateBar(nw);   // there was a previous version → this is an update
+            }
+          });
+        });
+
+        // check for a fresh deploy each time the app is focused
+        document.addEventListener('visibilitychange', function(){
+          if(document.visibilityState === 'visible'){ reg.update().catch(function(){}); }
+        });
+      }).catch(function(){});
+
+      // when the new worker activates, reload once to load the fresh assets
+      navigator.serviceWorker.addEventListener('controllerchange', function(){
+        if(reloading) return;
+        reloading = true;
+        location.reload();
+      });
     });
-  }
+  })();
 </script>
 </body>
 </html>

@@ -7,12 +7,21 @@
    intercepted - they always go straight to the network.
    ==================================================================== */
 
-const CACHE = 'mqc-v2';
+/* Cache version — BUMP THIS STRING ON EVERY DEPLOY (keep it in step with
+   APP_VERSION in index.html). Changing it is what makes the browser install
+   a new worker, which triggers the "new version available" banner. */
+const CACHE = 'mqc-v1.6';
 const SHELL = './';
 
 self.addEventListener('install', event => {
-  // activate the new worker immediately
-  self.skipWaiting();
+  // Do NOT skipWaiting automatically — we want the new worker to WAIT so the
+  // app can show an update banner. It activates when the user clicks Refresh
+  // (which posts SKIP_WAITING below) or after all tabs close.
+});
+
+self.addEventListener('message', event => {
+  // the page asks the waiting worker to take over immediately
+  if (event.data && event.data.type === 'SKIP_WAITING') self.skipWaiting();
 });
 
 self.addEventListener('activate', event => {
