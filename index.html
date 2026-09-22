@@ -687,7 +687,7 @@ const usd = new Intl.NumberFormat('en-US',{style:'currency',currency:'USD'});
 
 /* Build identifier — bump this on every deploy. Shown in the header and
    used to detect when a newer version has loaded. Format: vMAJOR.MINOR (YYYY-MM-DD) */
-const APP_VERSION = 'v2.1 (2026-08-20)';
+const APP_VERSION = 'v2.2 (2026-08-20)';
 
 /* ---- safe localStorage (works on GitHub Pages; no-ops if blocked) ---- */
 const store = {
@@ -959,8 +959,8 @@ function drawCounties(){
     const s = COUNTY_STYLE[nm] || { stroke:'#ffffff', fill:'#ffffff' };
     const on = (nm === activeCounty);
     return {
-      strokeColor:s.stroke, strokeWeight:on?4:2.5, strokeOpacity:0.95,
-      fillColor:s.fill, fillOpacity:on?0.28:0.08, zIndex:on?2:1, clickable:false
+      strokeColor:s.stroke, strokeWeight:on?5:3, strokeOpacity:on?1:0.9,
+      fillColor:s.fill, fillOpacity:on?0.10:0, zIndex:on?2:1, clickable:false
     };
   });
   COUNTIES.features.forEach(f=>{
