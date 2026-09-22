@@ -679,7 +679,7 @@ const usd = new Intl.NumberFormat('en-US',{style:'currency',currency:'USD'});
 
 /* Build identifier — bump this on every deploy. Shown in the header and
    used to detect when a newer version has loaded. Format: vMAJOR.MINOR (YYYY-MM-DD) */
-const APP_VERSION = 'v1.9 (2026-08-20)';
+const APP_VERSION = 'v2.0 (2026-08-20)';
 
 /* ---- safe localStorage (works on GitHub Pages; no-ops if blocked) ---- */
 const store = {
@@ -1293,17 +1293,6 @@ function resetRoute(k){
   state.routePts[k] = [];
   saveRoutePts(k);
   recomputeOrigin(k);
-}
-/* wipe every origin's remembered dragged route (used by the Clear button).
-   Returns how many origins actually had a saved route. */
-function clearAllRoutePts(){
-  let wiped = 0;
-  Object.keys(LOCATIONS).forEach(k=>{
-    if(state.routePts[k] && state.routePts[k].length) wiped++;
-    state.routePts[k] = [];
-    saveRoutePts(k);
-  });
-  return wiped;
 }
 async function recomputeOrigin(k){
   const dest = directionsDestination();
@@ -2024,14 +2013,15 @@ el('resetBtn').addEventListener('click',()=>{
   state.results={};
   state.destPin=null;
   saveDestPin();
-  const wiped = clearAllRoutePts();      // forget any hand-dragged routes
+  // NOTE: saved dragged routes (e.g. the Co Rd 144 detour) are intentionally
+  // kept through Clear so pricing stays consistent. Reset one deliberately via
+  // the "use Google's default" link on its quote card.
   renderDestRow();
   clearMap();
   hideAllRenderers();
   el('resultsBody').innerHTML='<div class="empty">Pick your origin(s), enter a destination, and hit <b>Calculate Quote</b>.</div>';
   el('toast').style.display='none';
   if(map){ map.setCenter({lat:46.70,lng:-95.71}); map.setZoom(9); }
-  if(wiped) notify('Cleared — saved route'+(wiped>1?'s':'')+' reset to Google default');
 });
 </script>
 
