@@ -679,7 +679,7 @@ const usd = new Intl.NumberFormat('en-US',{style:'currency',currency:'USD'});
 
 /* Build identifier — bump this on every deploy. Shown in the header and
    used to detect when a newer version has loaded. Format: vMAJOR.MINOR (YYYY-MM-DD) */
-const APP_VERSION = 'v1.7 (2026-07-16)';
+const APP_VERSION = 'v1.9 (2026-08-20)';
 
 /* ---- safe localStorage (works on GitHub Pages; no-ops if blocked) ---- */
 const store = {
@@ -956,6 +956,29 @@ function getRenderer(k){
 function hideAllRenderers(){
   Object.keys(renderers).forEach(k=>{ try{ renderers[k].setMap(null); }catch(e){} });
 }
+/* A dragged detour is only remembered for future quotes when it sits within
+   this many miles of the origin (a departure fix — e.g. forcing trucks off
+   Co Rd 144 as they leave the Detroit Lakes station). A drag farther out is
+   specific to one destination and would distort quotes to every other
+   destination, so it applies to the current quote only and is not saved. */
+const NEAR_ORIGIN_MILES = 6;
+
+/* straight-line miles between two {lat,lng} points (haversine) */
+function milesBetween(a, b){
+  const R = 3958.7613, rad = d => d*Math.PI/180;
+  const dLat = rad(b.lat-a.lat), dLng = rad(b.lng-a.lng);
+  const s = Math.sin(dLat/2)**2 +
+            Math.cos(rad(a.lat))*Math.cos(rad(b.lat))*Math.sin(dLng/2)**2;
+  return 2*R*Math.asin(Math.min(1, Math.sqrt(s)));
+}
+/* origin lat/lng for a computed route (start of the first leg) */
+function originPosFrom(dirResult, idx){
+  const rt = dirResult.routes && dirResult.routes[idx];
+  const leg = rt && rt.legs && rt.legs[0];
+  if(!leg || !leg.start_location) return null;
+  try{ return { lat:leg.start_location.lat(), lng:leg.start_location.lng() }; }
+  catch(e){ return null; }
+}
 /* fired by the renderer — distinguishes a genuine user drag (new result
    object) from our own setDirections / setRouteIndex (same object) */
 function onRouteChanged(k){
@@ -967,9 +990,20 @@ function onRouteChanged(k){
   if(cur && cur.dir === dir) return;          // our own call — not a user drag
   const idx = rend.getRouteIndex() || 0;
   state.results[k] = normalizeResult(k, dir, idx);
-  state.routePts[k] = extractViaPoints(dir, idx);
+
+  // only keep drag points near the origin; far ones apply to this quote only
+  const allPts = extractViaPoints(dir, idx);
+  const origin = originPosFrom(dir, idx);
+  const kept = origin
+    ? allPts.filter(p => milesBetween(origin, p) <= NEAR_ORIGIN_MILES)
+    : allPts;
+  state.routePts[k] = kept;
   saveRoutePts(k);
+
   setStatus('Route updated by drag','ok');
+  if(allPts.length > kept.length && kept.length === 0)
+    notify('Applied to this quote only — drag closer to the origin to save a lasting detour');
+
   render({ fit:false });                       // don't yank the map while dragging
 }
 /* request a route for one origin, honoring any persisted dragged via-points */
@@ -1259,6 +1293,17 @@ function resetRoute(k){
   state.routePts[k] = [];
   saveRoutePts(k);
   recomputeOrigin(k);
+}
+/* wipe every origin's remembered dragged route (used by the Clear button).
+   Returns how many origins actually had a saved route. */
+function clearAllRoutePts(){
+  let wiped = 0;
+  Object.keys(LOCATIONS).forEach(k=>{
+    if(state.routePts[k] && state.routePts[k].length) wiped++;
+    state.routePts[k] = [];
+    saveRoutePts(k);
+  });
+  return wiped;
 }
 async function recomputeOrigin(k){
   const dest = directionsDestination();
@@ -1979,12 +2024,14 @@ el('resetBtn').addEventListener('click',()=>{
   state.results={};
   state.destPin=null;
   saveDestPin();
+  const wiped = clearAllRoutePts();      // forget any hand-dragged routes
   renderDestRow();
   clearMap();
   hideAllRenderers();
   el('resultsBody').innerHTML='<div class="empty">Pick your origin(s), enter a destination, and hit <b>Calculate Quote</b>.</div>';
   el('toast').style.display='none';
   if(map){ map.setCenter({lat:46.70,lng:-95.71}); map.setZoom(9); }
+  if(wiped) notify('Cleared — saved route'+(wiped>1?'s':'')+' reset to Google default');
 });
 </script>
 
