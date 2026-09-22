@@ -184,6 +184,13 @@
   .dest-pin-row{display:flex;align-items:center;gap:6px;flex-wrap:wrap;margin-top:7px}
   input.is-off{background:#efece3;color:var(--muted);cursor:not-allowed}
 
+  /* ---- destination county tag ---- */
+  .county-tag{display:flex;align-items:center;gap:8px;margin-top:9px;
+    font-size:13px;font-weight:600;color:var(--ink);
+    background:#f2f6f2;border:1px solid var(--line-strong);border-radius:9px;padding:8px 11px}
+  .county-tag .cty-dot{flex:none;width:11px;height:11px;border-radius:50%}
+  .county-tag b{font-weight:800}
+
   /* ---- recent destinations dropdown ---- */
   .recent-select{width:100%;margin-top:8px;padding:9px 11px;border:1px solid var(--line-strong);
     border-radius:9px;font-family:inherit;font-size:13px;font-weight:600;color:var(--ink);
@@ -473,6 +480,7 @@
           <select id="recentSelect" class="recent-select"></select>
         </div>
         <div class="dest-pin-row" id="destPinRow"></div>
+        <div class="county-tag" id="countyTag" style="display:none"></div>
       </div>
 
       <div class="actions">
@@ -679,13 +687,24 @@ const usd = new Intl.NumberFormat('en-US',{style:'currency',currency:'USD'});
 
 /* Build identifier — bump this on every deploy. Shown in the header and
    used to detect when a newer version has loaded. Format: vMAJOR.MINOR (YYYY-MM-DD) */
-const APP_VERSION = 'v2.0 (2026-08-20)';
+const APP_VERSION = 'v2.1 (2026-08-20)';
 
 /* ---- safe localStorage (works on GitHub Pages; no-ops if blocked) ---- */
 const store = {
   get(k){ try{ return localStorage.getItem(k); }catch(e){ return null; } },
   set(k,v){ try{ localStorage.setItem(k,v); }catch(e){} }
 };
+
+/* ---- county overlay data (Becker, Otter Tail, Wadena) ---- */
+const COUNTIES = {"type":"FeatureCollection","features":[{"type":"Feature","properties":{"name":"Becker","cx":-95.6694,"cy":46.891},"geometry":{"type":"Polygon","coordinates":[[[-95.16301,46.80472],[-95.16371,46.71764],[-95.248,46.71625],[-96.17459,46.71785],[-96.17411,46.97738],[-96.19467,47.15115],[-96.06707,47.15181],[-95.55119,47.15145],[-95.16917,47.15252],[-95.16301,46.80472]]]}},{"type":"Feature","properties":{"name":"Otter Tail","cx":-95.7196,"cy":46.4998},"geometry":{"type":"Polygon","coordinates":[[[-95.15557,46.36888],[-95.14588,46.10676],[-95.76975,46.10745],[-96.26537,46.10861],[-96.28,46.28222],[-96.28098,46.63076],[-96.17227,46.63071],[-96.17459,46.71785],[-95.248,46.71625],[-95.16371,46.71764],[-95.15557,46.36888]]]}},{"type":"Feature","properties":{"name":"Wadena","cx":-94.9711,"cy":46.5559},"geometry":{"type":"Polygon","coordinates":[[[-94.78713,46.80394],[-94.77912,46.39422],[-94.73144,46.36861],[-95.15557,46.36888],[-95.16371,46.71764],[-95.16301,46.80472],[-94.78713,46.80394]]]}}]};
+const COUNTY_STYLE = {
+  'Becker':     { stroke:'#31d07a', fill:'#31d07a' },
+  'Otter Tail': { stroke:'#ff8a1e', fill:'#ff8a1e' },
+  'Wadena':     { stroke:'#38b6ff', fill:'#38b6ff' }
+};
+let countiesVisible = (store.get('mq_counties') !== '0');   // default on
+let countyLabels = [];        // centroid name markers
+let activeCounty = null;      // county the current destination falls in
 
 /* ---- runtime state ---- */
 let API_KEY = '';
@@ -888,8 +907,119 @@ window.initMap = function(){
 
   el('calcBtn').disabled = false;
   el('blockKey').querySelector('.block-h span').textContent = 'Google Maps API Key  ·  connected';
+  drawCounties();
+  addCountyToggle();
   setStatus('Ready','ok');
 };
+
+/* ============================================================
+   COUNTY OVERLAY  —  Becker / Otter Tail / Wadena boundaries,
+   plus point-in-polygon detection of a destination's county.
+   ============================================================ */
+/* is [lng,lat] inside a GeoJSON polygon (array of rings)? ray-casting */
+function pointInRings(lng, lat, rings){
+  let inside = false;
+  rings.forEach((ring, ri)=>{
+    let hit = false, j = ring.length-1;
+    for(let i=0;i<ring.length;i++){
+      const xi=ring[i][0], yi=ring[i][1], xj=ring[j][0], yj=ring[j][1];
+      if(((yi>lat)!==(yj>lat)) && (lng < (xj-xi)*(lat-yi)/(yj-yi)+xi)) hit = !hit;
+      j=i;
+    }
+    // ring 0 is the outer boundary; any further rings are holes
+    if(ri===0){ inside = hit; } else if(hit){ inside = false; }
+  });
+  return inside;
+}
+/* name of the county containing lat/lng, or null */
+function countyForPoint(lat, lng){
+  for(const f of COUNTIES.features){
+    const g = f.geometry;
+    if(g.type==='Polygon'){
+      if(pointInRings(lng, lat, g.coordinates)) return f.properties.name;
+    }else{ // MultiPolygon
+      for(const poly of g.coordinates){
+        if(pointInRings(lng, lat, poly)) return f.properties.name;
+      }
+    }
+  }
+  return null;
+}
+/* draw the county boundaries + centroid labels on the map */
+function drawCounties(){
+  if(!map) return;
+  map.data.forEach(ft=>map.data.remove(ft));       // clear any prior
+  countyLabels.forEach(m=>m.setMap(null));
+  countyLabels = [];
+  if(!countiesVisible) return;
+
+  map.data.addGeoJson(COUNTIES);
+  map.data.setStyle(feat=>{
+    const nm = feat.getProperty('name');
+    const s = COUNTY_STYLE[nm] || { stroke:'#ffffff', fill:'#ffffff' };
+    const on = (nm === activeCounty);
+    return {
+      strokeColor:s.stroke, strokeWeight:on?4:2.5, strokeOpacity:0.95,
+      fillColor:s.fill, fillOpacity:on?0.28:0.08, zIndex:on?2:1, clickable:false
+    };
+  });
+  COUNTIES.features.forEach(f=>{
+    const s = COUNTY_STYLE[f.properties.name] || {stroke:'#fff'};
+    const m = new google.maps.Marker({
+      position:{lat:f.properties.cy, lng:f.properties.cx}, map, clickable:false, zIndex:2,
+      icon:{
+        url:'data:image/svg+xml;charset=UTF-8,'+encodeURIComponent(countyLabelSvg(f.properties.name+' County', s.stroke)),
+        anchor:new google.maps.Point(0,0)
+      }
+    });
+    countyLabels.push(m);
+  });
+}
+function countyLabelSvg(text, color){
+  const w = text.length*7.2 + 16, h = 22;
+  const esc = text.replace(/&/g,'&amp;');
+  return "<svg xmlns='http://www.w3.org/2000/svg' width='"+w+"' height='"+h+"'>"+
+    "<rect x='1' y='1' width='"+(w-2)+"' height='"+(h-2)+"' rx='"+((h-2)/2)+"' "+
+      "fill='rgba(20,24,20,.72)' stroke='"+color+"' stroke-width='1.5'/>"+
+    "<text x='"+(w/2)+"' y='"+(h/2+4)+"' font-family='Arial,sans-serif' font-size='11' "+
+      "font-weight='700' fill='#fff' text-anchor='middle'>"+esc+"</text></svg>";
+}
+/* a small on-map toggle for the county overlay */
+function addCountyToggle(){
+  if(!map) return;
+  const btn = document.createElement('button');
+  btn.type='button';
+  btn.style.cssText='margin:10px;padding:7px 11px;border:0;border-radius:8px;cursor:pointer;'+
+    'font:700 12px/1 inherit;background:#fff;color:#1d201a;box-shadow:0 1px 4px rgba(0,0,0,.3)';
+  const paint = ()=>{ btn.textContent = (countiesVisible?'✓ ':'')+'Counties'; btn.style.opacity=countiesVisible?'1':'.7'; };
+  paint();
+  btn.addEventListener('click',()=>{
+    countiesVisible = !countiesVisible;
+    store.set('mq_counties', countiesVisible?'1':'0');
+    paint();
+    drawCounties();
+  });
+  map.controls[google.maps.ControlPosition.LEFT_TOP].push(btn);
+}
+/* detect the destination's county from lat/lng, update label + highlight */
+function updateDestCounty(lat, lng){
+  activeCounty = (typeof lat==='number' && typeof lng==='number') ? countyForPoint(lat,lng) : null;
+  renderCountyTag();
+  drawCounties();          // re-style so the active county is emphasized
+}
+function renderCountyTag(){
+  const box = el('countyTag');
+  if(!box) return;
+  if(activeCounty){
+    const s = COUNTY_STYLE[activeCounty] || {stroke:'#2f6b41'};
+    box.style.display='flex';
+    box.innerHTML = '<span class="cty-dot" style="background:'+s.stroke+'"></span>'+
+      '<span>Destination county: <b>'+activeCounty+' County</b></span>';
+  }else{
+    box.style.display='none';
+    box.innerHTML='';
+  }
+}
 
 /* ============================================================
    ROUTING  —  DirectionsService + draggable DirectionsRenderer
@@ -1089,6 +1219,19 @@ async function calculate(){
   const okCount = Object.values(state.results).filter(r=>r.routes).length;
   setStatus(okCount ? 'Quote ready' : 'Routing failed', okCount?'ok':'err');
   if(okCount && !state.destPin) addRecent(destInput.value);   // remember a typed destination
+
+  // auto-detect the destination county from the routed end point
+  if(okCount){
+    let dpt = null;
+    if(state.destPin){ dpt = { lat:state.destPin.lat, lng:state.destPin.lng }; }
+    else {
+      const anyR = Object.values(state.results).find(r=>r.dir);
+      const legs = anyR && anyR.dir.routes[anyR.idx] && anyR.dir.routes[anyR.idx].legs;
+      const last = legs && legs[legs.length-1];
+      if(last && last.end_location) dpt = { lat:last.end_location.lat(), lng:last.end_location.lng() };
+    }
+    if(dpt) updateDestCounty(dpt.lat, dpt.lng);
+  }
   render();
 }
 
@@ -1883,11 +2026,14 @@ async function chooseAc(i){
   if(it.pred && typeof it.pred.toPlace === 'function'){
     try{
       const place = it.pred.toPlace();
-      await place.fetchFields({ fields:['formattedAddress'] });
+      await place.fetchFields({ fields:['formattedAddress','location'] });
       if(place.formattedAddress){
         const full = place.formattedAddress.replace(/,\s*(USA|United States)\s*$/i,'');
         destInput.value = full;
         store.set('mq_dest', full);
+      }
+      if(place.location){    // auto-detect county the moment the address resolves
+        updateDestCounty(place.location.lat(), place.location.lng());
       }
     }catch(e){ /* keep the prediction text if the details lookup fails */ }
   }
@@ -2013,6 +2159,7 @@ el('resetBtn').addEventListener('click',()=>{
   state.results={};
   state.destPin=null;
   saveDestPin();
+  updateDestCounty(null, null);         // clear the destination-county tag/highlight
   // NOTE: saved dragged routes (e.g. the Co Rd 144 detour) are intentionally
   // kept through Clear so pricing stays consistent. Reset one deliberately via
   // the "use Google's default" link on its quote card.
