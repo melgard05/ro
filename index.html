@@ -633,7 +633,7 @@ const SERVICES = {
     /* MSW has two selectable rates, same Perham origin. Only one applies
        to a quote at a time. */
     rateModes:{
-      temporary:{ label:'Temporary', perMile:6, base:{ perham:70 } },
+      temporary:{ label:'Temporary', perMile:7, base:{ perham:70 } },
       permanent:{ label:'Permanent', perMile:3, base:{ perham:0  } }
     }
   }
@@ -687,7 +687,7 @@ const usd = new Intl.NumberFormat('en-US',{style:'currency',currency:'USD'});
 
 /* Build identifier — bump this on every deploy. Shown in the header and
    used to detect when a newer version has loaded. Format: vMAJOR.MINOR (YYYY-MM-DD) */
-const APP_VERSION = 'v2.3 (2026-09-28)';
+const APP_VERSION = 'v2.4 (2026-09-28)';
 
 /* ---- safe localStorage (works on GitHub Pages; no-ops if blocked) ---- */
 const store = {
