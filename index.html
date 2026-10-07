@@ -339,6 +339,23 @@
   .avg-half .k{color:var(--muted);font-size:11px;font-weight:600}
   .avg-half .v{font-weight:800;font-size:15px;margin-top:1px}
 
+  /* ---- Becker basis chooser ---- */
+  .basis-opts{background:var(--surface);padding:9px;display:flex;flex-direction:column;gap:7px}
+  .basis{display:flex;align-items:center;justify-content:space-between;gap:10px;width:100%;
+    text-align:left;cursor:pointer;font-family:inherit;
+    background:#fcfbf7;border:1.5px solid var(--line-strong);border-radius:10px;padding:10px 13px}
+  .basis:hover{border-color:var(--pine)}
+  .basis.on{border-color:var(--pine);background:#eef5ef;box-shadow:0 0 0 2px rgba(47,107,65,.18)}
+  .basis .b-k{font-size:13px;font-weight:700;color:var(--ink);display:flex;align-items:center;gap:7px;flex-wrap:wrap}
+  .basis .b-v{font-size:17px;font-weight:800;color:var(--ink)}
+  .basis.on .b-v{color:var(--pine)}
+  .b-badge{font-size:9.5px;font-weight:800;letter-spacing:.04em;text-transform:uppercase;
+    background:var(--pine);color:#fff;border-radius:999px;padding:2px 7px}
+  .b-note{font-size:10.5px;font-weight:700;color:var(--muted);background:#e9e5d9;border-radius:999px;padding:2px 7px}
+  .basis .b-check{flex:none;width:17px;height:17px;border-radius:50%;border:2px solid var(--line-strong);
+    display:inline-flex;align-items:center;justify-content:center;font-size:11px;color:#fff}
+  .basis.on .b-check{background:var(--pine);border-color:var(--pine)}
+
   .note-err{
     border:1px solid #e3c4bf;background:#f7ecea;color:var(--err);
     border-radius:10px;padding:11px 13px;font-size:12.8px;font-weight:600;margin-top:12px;
@@ -689,7 +706,7 @@ const usd = new Intl.NumberFormat('en-US',{style:'currency',currency:'USD'});
 
 /* Build identifier — bump this on every deploy. Shown in the header and
    used to detect when a newer version has loaded. Format: vMAJOR.MINOR (YYYY-MM-DD) */
-const APP_VERSION = 'v2.5 (2026-09-28)';
+const APP_VERSION = 'v2.6 (2026-10-07)';
 
 /* ---- safe localStorage (works on GitHub Pages; no-ops if blocked) ---- */
 const store = {
@@ -707,6 +724,7 @@ const COUNTY_STYLE = {
 let countiesVisible = (store.get('mq_counties') !== '0');   // default on
 let countyLabels = [];        // centroid name markers
 let activeCounty = null;      // county the current destination falls in
+let roPick = null;            // Becker RO quote basis: 'avg' | 'dl' | 'perham'
 
 /* ---- runtime state ---- */
 let API_KEY = '';
@@ -1262,11 +1280,14 @@ function applyRoCountyPlan(){
     const dlT  = quote('detroitLakes', chosenRoute('detroitLakes').miles).total;
     const perT = quote('perham',       chosenRoute('perham').miles).total;
     const avgT = round5((dlT + perT)/2);
-    keep = (avgT <= dlT) ? ['detroitLakes','perham'] : ['detroitLakes'];
+    roPick = (avgT <= dlT) ? 'avg' : 'dl';   // recommend the lower of average vs DL
+    keep = ['detroitLakes','perham'];        // Becker always shows both origins
   } else if(activeCounty === 'Becker'){
-    keep = hasDL ? ['detroitLakes'] : have;     // only one routed — use it
+    roPick = hasDL ? 'dl' : 'perham';
+    keep = have;                              // only one routed — use it
   } else {
-    keep = hasPer ? ['perham'] : have;          // Otter Tail / Wadena / other → Perham
+    roPick = null;
+    keep = hasPer ? ['perham'] : have;        // Otter Tail / Wadena / other → Perham
   }
 
   ORDER.forEach(k=>{
@@ -1659,31 +1680,36 @@ function render(ropts){
 
   let html = '';
 
-  /* ---- averaged headline (only when both origins succeeded) ---- */
+  /* ---- Becker basis chooser (both origins shown, lower of avg/DL flagged) ---- */
   if(ok.length===2){
-    let totalSum=0, mileSum=0;
-    ok.forEach(k=>{
-      const mi = chosenRoute(k).miles;
-      totalSum += quote(k,mi).total;
-      mileSum  += mi;
-    });
-    const avg = round5(totalSum/2), avgMi = mileSum/2;
+    const dlT  = quote('detroitLakes', chosenRoute('detroitLakes').miles).total;
+    const perT = quote('perham',       chosenRoute('perham').miles).total;
+    const avgT = round5((dlT + perT)/2);
+    const rec  = (avgT <= dlT) ? 'avg' : 'dl';        // lower of average vs DL
+    if(roPick!=='avg' && roPick!=='dl' && roPick!=='perham') roPick = rec;
+    const pickT = roPick==='avg'?avgT : roPick==='dl'?dlT : perT;
+    const pickLabel = roPick==='avg'?'Average of both origins'
+                    : roPick==='dl' ?'Detroit Lakes origin'
+                    :                'Perham origin — return haul';
+    const chk = '<span class="b-check">✓</span>';
+    const row = (key,label,val,extra)=>
+      `<button class="basis ${roPick===key?'on':''}" data-basis="${key}">
+         <span class="b-k">${label}${extra||''}</span>
+         <span style="display:flex;align-items:center;gap:9px">
+           <span class="b-v mono">${usd.format(val)}</span>${roPick===key?chk:'<span class="b-check"></span>'}
+         </span>
+       </button>`;
     html += `
       <div class="avg-card">
         <div class="avg-top">
-          <div class="avg-label">Averaged Quote — both origins</div>
-          <div class="avg-num mono">${usd.format(avg)}</div>
-          <div class="avg-sub">Average of the two origin quotes, rounded to $5 · avg ${avgMi.toFixed(1)} mi one way</div>
+          <div class="avg-label">Becker County — quote basis</div>
+          <div class="avg-num mono">${usd.format(pickT)}</div>
+          <div class="avg-sub">${pickLabel} · tap a basis to change</div>
         </div>
-        <div class="avg-split">
-          <div class="avg-half">
-            <div class="k">${ORIGINS.detroitLakes.label}</div>
-            <div class="v mono">${usd.format(quote('detroitLakes',chosenRoute('detroitLakes').miles).total)}</div>
-          </div>
-          <div class="avg-half">
-            <div class="k">${ORIGINS.perham.label}</div>
-            <div class="v mono">${usd.format(quote('perham',chosenRoute('perham').miles).total)}</div>
-          </div>
+        <div class="basis-opts">
+          ${row('avg','Average — both origins', avgT, rec==='avg'?' <span class="b-badge">Recommended</span>':'')}
+          ${row('dl','Detroit Lakes', dlT, rec==='dl'?' <span class="b-badge">Recommended</span>':'')}
+          ${row('perham','Perham', perT, ' <span class="b-note">return haul</span>')}
         </div>
       </div>`;
   }
@@ -1764,6 +1790,8 @@ function render(ropts){
   });
   body.querySelectorAll('[data-route-reset]').forEach(b=>
     b.addEventListener('click',()=>resetRoute(b.dataset.routeReset)));
+  body.querySelectorAll('[data-basis]').forEach(b=>
+    b.addEventListener('click',()=>{ roPick = b.dataset.basis; render({fit:false}); }));
 
   const cBtn=el('copyBtn'); if(cBtn) cBtn.addEventListener('click', copySummary);
   const pBtn=el('printBtn'); if(pBtn) pBtn.addEventListener('click', openQuotePage);
@@ -1798,7 +1826,7 @@ function gatherQuote(){
   });
   const sum = origins.reduce((s,o)=>s+o.total,0);
   const svc = SERVICES[activeService];
-  return {
+  const g = {
     serviceLabel: svc.label,
     serviceName : svc.name,
     serviceColor: svc.accent,
@@ -1807,10 +1835,30 @@ function gatherQuote(){
     quoteNo     : (el('quoteNo')  && el('quoteNo').value.trim())  || '',
     customer    : (el('custName') && el('custName').value.trim()) || '',
     customerAddr: (el('custAddr') && el('custAddr').value.trim()) || '',
+    basis       : '',
     origins     : origins,
     averaged    : ok.length===2,
     total       : ok.length===2 ? round5(sum/2) : sum
   };
+
+  // Becker RO: the output follows the chosen basis (average / DL / Perham)
+  if(ok.length===2){
+    const dlO  = origins.find(o=>o.key==='detroitLakes');
+    const perO = origins.find(o=>o.key==='perham');
+    const avgT = round5((dlO.total + perO.total)/2);
+    const pick = (roPick==='dl'||roPick==='perham') ? roPick : 'avg';
+    if(pick==='avg'){
+      g.total = avgT; g.averaged = true;  g.basis = 'Average of both origins';
+      g.origins = origins;                                   // show both
+    }else if(pick==='dl'){
+      g.total = dlO.total; g.averaged = false; g.basis = 'Detroit Lakes origin';
+      g.origins = [dlO];
+    }else{
+      g.total = perO.total; g.averaged = false; g.basis = 'Perham origin (return haul)';
+      g.origins = [perO];
+    }
+  }
+  return g;
 }
 
 /* ---- copy plain-text summary ---- */
@@ -1831,6 +1879,7 @@ function copySummary(){
     lines.push(`  Quote (rounded to $5): ${usd.format(o.total)}`);
     lines.push('');
   });
+  if(g.basis) lines.push('Basis: '+g.basis);
   lines.push(g.averaged ? 'AVERAGED QUOTE: '+usd.format(g.total)
                         : 'QUOTE TOTAL: '+usd.format(g.total));
   navigator.clipboard.writeText(lines.join('\n')).then(()=>{
@@ -1969,7 +2018,7 @@ function buildPrintHTML(g){
       <td>${usd.format(o.total)}</td>
     </tr>`;
   });
-  const totalLabel = g.averaged ? 'Averaged Quote — Both Origins' : 'Quote Total';
+  const totalLabel = g.basis ? g.basis : (g.averaged ? 'Averaged Quote — Both Origins' : 'Quote Total');
   const preparedFor = g.customer
     ? `<div class="ps-row"><div>
          <div class="ps-fld-l">Prepared For</div>
