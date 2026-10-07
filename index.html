@@ -468,8 +468,10 @@
         <div class="origins" id="rateModes"></div>
       </div>
 
-      <label class="fld" id="originsLabel">Origin(s) — choose one or both</label>
-      <div class="origins" id="origins"></div>
+      <div id="originsWrap">
+        <label class="fld" id="originsLabel">Origin(s) — choose one or both</label>
+        <div class="origins" id="origins"></div>
+      </div>
 
       <div style="margin-top:14px" class="dest-wrap">
         <label class="fld" for="dest">Destination</label>
@@ -497,7 +499,7 @@
       <span>Quote</span>
     </div>
     <div class="block-b" id="resultsBody">
-      <div class="empty">Pick your origin(s), enter a destination, and hit <b>Calculate Quote</b>.</div>
+      <div class="empty">Enter a destination and hit <b>Calculate Quote</b>.</div>
     </div>
     <div class="toast" id="toast" style="display:none;padding:0 16px 12px"></div>
   </div>
@@ -687,7 +689,7 @@ const usd = new Intl.NumberFormat('en-US',{style:'currency',currency:'USD'});
 
 /* Build identifier — bump this on every deploy. Shown in the header and
    used to detect when a newer version has loaded. Format: vMAJOR.MINOR (YYYY-MM-DD) */
-const APP_VERSION = 'v2.4 (2026-09-28)';
+const APP_VERSION = 'v2.5 (2026-09-28)';
 
 /* ---- safe localStorage (works on GitHub Pages; no-ops if blocked) ---- */
 const store = {
@@ -795,7 +797,7 @@ function switchService(key){
   if(map && directionsDestination()){
     calculate();
   }else{
-    el('resultsBody').innerHTML='<div class="empty">Pick your origin(s), enter a destination, and hit <b>Calculate Quote</b>.</div>';
+    el('resultsBody').innerHTML='<div class="empty">Enter a destination and hit <b>Calculate Quote</b>.</div>';
   }
 }
 /* paint everything that depends on the active service */
@@ -814,6 +816,10 @@ function renderService(){
   const wm = el('serviceWm');if(wm) wm.innerHTML = SERVICE_ICON[activeService];
   document.querySelectorAll('.svc-tab').forEach(t=>
     t.classList.toggle('on', t.dataset.svc===activeService));
+  // RO picks its origin automatically from the destination county, so the
+  // manual picker is hidden; MSW still shows its single Perham dispatch point.
+  const ow = el('originsWrap');
+  if(ow) ow.style.display = (activeService==='ro') ? 'none' : '';
 }
 
 /* ============================================================
@@ -1187,9 +1193,11 @@ function gmapsWaypoints(k){
 
 async function calculate(){
   const dest = directionsDestination();
-  const sel  = selectedOrigins();
+  // Origins are automatic now: RO routes both dispatch points behind the scenes
+  // (the displayed one is chosen by county below); MSW uses its single origin.
+  const sel  = (SERVICES[activeService].origins || ['perham']).slice();
   if(!dest){ flashResults('Enter a destination address, or drop a pin on the map.'); return; }
-  if(!sel.length){ flashResults('Select at least one origin.'); return; }
+  if(!sel.length){ flashResults('No dispatch origin configured for this service.'); return; }
 
   if(quoteLocked){                       // previous quote was printed → start fresh
     newQuoteNo();
@@ -1230,9 +1238,43 @@ async function calculate(){
       const last = legs && legs[legs.length-1];
       if(last && last.end_location) dpt = { lat:last.end_location.lat(), lng:last.end_location.lng() };
     }
-    if(dpt) updateDestCounty(dpt.lat, dpt.lng);
+    updateDestCounty(dpt?dpt.lat:null, dpt?dpt.lng:null);
+    applyRoCountyPlan();      // RO: keep only the origin(s) the county rule selects
   }
   render();
+}
+
+/* RO only — choose which dispatch origin(s) to display from the destination
+   county. Both origins are routed behind the scenes; this drops the ones the
+   rule doesn't use:
+     • Becker County      → the lower of (average of both origins) and
+                             (Detroit Lakes alone). Perham-alone is never used.
+     • Otter Tail / Wadena / outside / undetected → Perham alone. */
+function applyRoCountyPlan(){
+  if(activeService !== 'ro') return;
+  const have = ORDER.filter(k=>state.results[k] && state.results[k].routes);
+  if(!have.length) return;
+  const hasDL  = have.indexOf('detroitLakes') >= 0;
+  const hasPer = have.indexOf('perham') >= 0;
+
+  let keep;
+  if(activeCounty === 'Becker' && hasDL && hasPer){
+    const dlT  = quote('detroitLakes', chosenRoute('detroitLakes').miles).total;
+    const perT = quote('perham',       chosenRoute('perham').miles).total;
+    const avgT = round5((dlT + perT)/2);
+    keep = (avgT <= dlT) ? ['detroitLakes','perham'] : ['detroitLakes'];
+  } else if(activeCounty === 'Becker'){
+    keep = hasDL ? ['detroitLakes'] : have;     // only one routed — use it
+  } else {
+    keep = hasPer ? ['perham'] : have;          // Otter Tail / Wadena / other → Perham
+  }
+
+  ORDER.forEach(k=>{
+    if(keep.indexOf(k) < 0 && state.results[k]){
+      delete state.results[k];
+      if(renderers[k]) renderers[k].setMap(null);
+    }
+  });
 }
 
 /* ============================================================
@@ -1610,7 +1652,7 @@ function render(ropts){
   const errs = ORDER.filter(k=>state.results[k] && state.results[k].err);
 
   if(!ok.length && !errs.length){
-    body.innerHTML = '<div class="empty">Pick your origin(s), enter a destination, and hit <b>Calculate Quote</b>.</div>';
+    body.innerHTML = '<div class="empty">Enter a destination and hit <b>Calculate Quote</b>.</div>';
     el('toast').style.display='none';
     return;
   }
@@ -2166,7 +2208,7 @@ el('resetBtn').addEventListener('click',()=>{
   renderDestRow();
   clearMap();
   hideAllRenderers();
-  el('resultsBody').innerHTML='<div class="empty">Pick your origin(s), enter a destination, and hit <b>Calculate Quote</b>.</div>';
+  el('resultsBody').innerHTML='<div class="empty">Enter a destination and hit <b>Calculate Quote</b>.</div>';
   el('toast').style.display='none';
   if(map){ map.setCenter({lat:46.70,lng:-95.71}); map.setZoom(9); }
 });
