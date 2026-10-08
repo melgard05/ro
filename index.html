@@ -537,8 +537,8 @@
     </div>
   </div>
 
-  <!-- ===== 4. GOOGLE MAPS API KEY ===== -->
-  <div class="block" id="blockKey">
+  <!-- ===== 4. GOOGLE MAPS API KEY (embedded — block hidden) ===== -->
+  <div class="block" id="blockKey" style="display:none">
     <div class="block-h"><span>Google Maps API Key</span></div>
     <div class="block-b">
       <div class="row-inline">
@@ -714,7 +714,7 @@ const usd = new Intl.NumberFormat('en-US',{style:'currency',currency:'USD'});
 
 /* Build identifier — bump this on every deploy. Shown in the header and
    used to detect when a newer version has loaded. Format: vMAJOR.MINOR (YYYY-MM-DD) */
-const APP_VERSION = 'v2.8 (2026-10-08)';
+const APP_VERSION = 'v2.9 (2026-10-08)';
 
 /* ---- safe localStorage (works on GitHub Pages; no-ops if blocked) ---- */
 const store = {
@@ -733,6 +733,12 @@ let countiesVisible = (store.get('mq_counties') !== '0');   // default on
 let countyLabels = [];        // centroid name markers
 let activeCounty = null;      // county the current destination falls in
 let roPick = null;            // Becker RO quote basis: 'avg' | 'dl' | 'perham'
+
+/* ---- Google Maps API key (embedded so every machine just works) ----
+   Client-side key; it's visible in the page by design. Protect it in Google
+   Cloud by restricting it to this site: Application restrictions → Websites →
+   https://melgard05.github.io/*  (and keep the 3 APIs enabled on it). */
+const BUILTIN_KEY = 'AIzaSyDEiESzSC7MmU-JiFLBt7eca0DF_fyy4os';
 
 /* ---- runtime state ---- */
 let API_KEY = '';
@@ -2236,8 +2242,10 @@ renderLog();
 renderRecentSelect();
 newQuoteNo();
 
-const savedKey = store.get('mq_apikey');
-if(savedKey){ el('apiKey').value = savedKey; loadGoogleMaps(savedKey); }
+// Always use the embedded key, overwriting any old/bad key saved on this machine.
+store.set('mq_apikey', BUILTIN_KEY);
+el('apiKey').value = BUILTIN_KEY;
+loadGoogleMaps(BUILTIN_KEY);
 const savedDest = store.get('mq_dest');
 if(savedDest && !state.destPin){ destInput.value = savedDest; }
 
