@@ -264,6 +264,9 @@
   .btn-ghost{background:#fcfbf7;border-color:var(--line-strong);color:var(--ink)}
   .btn-ghost:hover:not(:disabled){background:#f1eee4}
   .btn-sm{padding:7px 11px;font-size:12.5px}
+  .cta-quote{width:100%;display:flex;align-items:center;justify-content:center;gap:8px;
+    font-size:15px;font-weight:800;padding:14px;margin-bottom:14px;
+    box-shadow:0 6px 18px rgba(47,107,65,.25)}
 
   /* ---- origin pickers ---- */
   .origins{display:flex;flex-direction:column;gap:10px}
@@ -706,7 +709,7 @@ const usd = new Intl.NumberFormat('en-US',{style:'currency',currency:'USD'});
 
 /* Build identifier — bump this on every deploy. Shown in the header and
    used to detect when a newer version has loaded. Format: vMAJOR.MINOR (YYYY-MM-DD) */
-const APP_VERSION = 'v2.6 (2026-10-07)';
+const APP_VERSION = 'v2.7 (2026-10-08)';
 
 /* ---- safe localStorage (works on GitHub Pages; no-ops if blocked) ---- */
 const store = {
@@ -1680,6 +1683,11 @@ function render(ropts){
 
   let html = '';
 
+  /* ---- Create Quote button (top) → hands this haul to the full Quoter ---- */
+  if(ok.length){
+    html += `<button class="btn-primary cta-quote" id="toQuoterTop">Create Quote →</button>`;
+  }
+
   /* ---- Becker basis chooser (both origins shown, lower of avg/DL flagged) ---- */
   if(ok.length===2){
     const dlT  = quote('detroitLakes', chosenRoute('detroitLakes').miles).total;
@@ -1777,7 +1785,6 @@ function render(ropts){
     html += `<div class="quote-actions">
       <button class="btn-ghost btn-sm" id="copyBtn">Copy summary</button>
       <button class="btn-ghost btn-sm" id="logBtn">Save to log</button>
-      <button class="btn-primary btn-sm" id="printBtn">Create Quote →</button>
     </div>`;
   }
 
@@ -1794,7 +1801,7 @@ function render(ropts){
     b.addEventListener('click',()=>{ roPick = b.dataset.basis; render({fit:false}); }));
 
   const cBtn=el('copyBtn'); if(cBtn) cBtn.addEventListener('click', copySummary);
-  const pBtn=el('printBtn'); if(pBtn) pBtn.addEventListener('click', openQuotePage);
+  const qBtn=el('toQuoterTop'); if(qBtn) qBtn.addEventListener('click', goToQuoter);
   const lBtn=el('logBtn');
   if(lBtn) lBtn.addEventListener('click',()=>{
     addToLog();
@@ -1860,6 +1867,25 @@ function gatherQuote(){
   }
   return g;
 }
+
+/* ---- hand this haul to the full Roll-Off Quoter (same tab) ---- */
+function quoterUrl(){
+  const g = gatherQuote();
+  if(!g) return null;
+  const miles = g.averaged
+    ? (g.origins.reduce((s,o)=>s+o.miles,0) / g.origins.length)
+    : (g.origins[0] ? g.origins[0].miles : NaN);
+  const basis = g.basis || (g.origins.length===1 ? g.origins[0].label + ' origin' : '');
+  const p = new URLSearchParams({
+    dest  : g.dest || '',
+    county: activeCounty || '',
+    miles : isFinite(miles) ? miles.toFixed(1) : '',
+    haul  : String(g.total),
+    basis : basis
+  });
+  return '../quoter/?' + p.toString();   // sibling app on the same site
+}
+function goToQuoter(){ const u = quoterUrl(); if(u) location.href = u; }
 
 /* ---- copy plain-text summary ---- */
 function copySummary(){
