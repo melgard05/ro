@@ -783,7 +783,7 @@ const usd = new Intl.NumberFormat('en-US',{style:'currency',currency:'USD'});
 
 /* Build identifier — bump this on every deploy. Shown in the header and
    used to detect when a newer version has loaded. Format: vMAJOR.MINOR (YYYY-MM-DD) */
-const APP_VERSION = 'v3.0 (2026-10-12)';
+const APP_VERSION = 'v3.1 (2026-10-13)';
 
 /* ---- safe localStorage (works on GitHub Pages; no-ops if blocked) ---- */
 const store = {
@@ -804,10 +804,12 @@ let activeCounty = null;      // county the current destination falls in
 let roPick = null;            // Becker RO quote basis: 'avg' | 'dl' | 'perham'
 
 /* ---- Google Maps API key (embedded so every machine just works) ----
+   "Maps Platform API Key" in the company's Google Cloud project (work account).
    Client-side key; it's visible in the page by design. Protect it in Google
    Cloud by restricting it to this site: Application restrictions → Websites →
-   https://melgard05.github.io/*  (and keep the 3 APIs enabled on it). */
-const BUILTIN_KEY = 'AIzaSyDEiESzSC7MmU-JiFLBt7eca0DF_fyy4os';
+   https://melgard05.github.io/*  — and keep Maps JavaScript API, Routes API and
+   Places API (New) in its API restrictions. */
+const BUILTIN_KEY = 'AIzaSyBWZuHflgtXy2Puq7hEM2yLzP7IKpRDYPo';
 
 /* ---- runtime state ---- */
 let API_KEY = '';
