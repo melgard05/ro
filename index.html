@@ -783,7 +783,7 @@ const usd = new Intl.NumberFormat('en-US',{style:'currency',currency:'USD'});
 
 /* Build identifier — bump this on every deploy. Shown in the header and
    used to detect when a newer version has loaded. Format: vMAJOR.MINOR (YYYY-MM-DD) */
-const APP_VERSION = 'v3.1 (2026-10-13)';
+const APP_VERSION = 'v3.2 (2026-10-13)';
 
 /* ---- safe localStorage (works on GitHub Pages; no-ops if blocked) ---- */
 const store = {
@@ -2089,7 +2089,9 @@ function quoterUrl(){
     county: activeCounty || '',
     miles : isFinite(miles) ? miles.toFixed(1) : '',
     haul  : String(g.total),
-    basis : basis
+    basis : basis,
+    // which kind of quote to open: roll-off, or MSW temporary / permanent (the rate mode)
+    svc   : activeService==='msw' ? (activeRateMode==='permanent' ? 'msw-perm' : 'msw-temp') : 'ro'
   });
   return '../quoter/?' + p.toString();   // sibling app on the same site
 }
