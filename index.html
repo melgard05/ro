@@ -783,7 +783,7 @@ const usd = new Intl.NumberFormat('en-US',{style:'currency',currency:'USD'});
 
 /* Build identifier — bump this on every deploy. Shown in the header and
    used to detect when a newer version has loaded. Format: vMAJOR.MINOR (YYYY-MM-DD) */
-const APP_VERSION = 'v3.3 (2026-10-23)';
+const APP_VERSION = 'v3.4 (2026-10-23)';
 
 /* ---- safe localStorage (works on GitHub Pages; no-ops if blocked) ---- */
 const store = {
@@ -1133,8 +1133,11 @@ function renderCountyTag(){
    Each origin's route is drawn as a polyline the app owns. Grab the
    line and drag it (on a phone: tap the line, then drag the white
    dot) to force the route through a point; Google re-routes along
-   real roads and the mileage updates. Via-points near the origin
-   persist for future quotes; far ones apply to this quote only.
+   real roads and the mileage updates. A via-point has to land on a
+   road: after the re-route the dot is moved onto the road the route
+   actually took, a drop too far from any road is refused, and a drop
+   that makes the route go in and back out (a dead end) gets a warning.
+   Via-points belong to the current quote only.
    ============================================================ */
 const ROUTES_URL    = 'https://routes.googleapis.com/directions/v2:computeRoutes';
 const ROUTES_FIELDS = 'routes.duration,routes.distanceMeters,routes.polyline.encodedPolyline,'
@@ -1240,6 +1243,34 @@ function selectRoute(k, j){
    Google's default route. (v3.3 — before this, a drag within 6 miles of the
    origin was remembered for later quotes.) */
 
+/* straight-line miles between two {lat,lng} points (haversine) */
+function milesBetween(a, b){
+  const R = 3958.7613, rad = d => d*Math.PI/180;
+  const dLat = rad(b.lat-a.lat), dLng = rad(b.lng-a.lng);
+  const s = Math.sin(dLat/2)**2 +
+            Math.cos(rad(a.lat))*Math.cos(rad(b.lat))*Math.sin(dLng/2)**2;
+  return 2*R*Math.asin(Math.min(1, Math.sqrt(s)));
+}
+/* a dropped via-point farther than this from the road the route ends up on
+   was dropped in a field or a lake, not on a road: the drop is refused */
+const MAX_SNAP_MILES = 0.25;
+/* after a re-route, sit every via dot on the road the route actually took */
+function snapViasToRoute(k){
+  const path = chosenPath(k); if(!path.length) return;
+  state.routePts[k] = (state.routePts[k] || []).map(p=>{ const v = path[nearestIdx(path, p)]; return { lat:v.lat, lng:v.lng }; });
+}
+/* does the route double back on itself at vertex i (a via-point on a dead end /
+   past the turn, so the truck goes in and back out)? Looks ~0.2 mi each way along
+   the line: if those two spots are within 80 yd of each other it's a spur. */
+function isSpur(path, i){
+  if(!path || path.length < 3 || i == null) return false;
+  const LOOK = 0.2, CLOSE = 0.045;
+  let a = i, acc = 0; while(a > 0 && acc < LOOK){ acc += milesBetween(path[a], path[a-1]); a--; }
+  if(acc < LOOK) return false;
+  let b = i; acc = 0; while(b < path.length-1 && acc < LOOK){ acc += milesBetween(path[b], path[b+1]); b++; }
+  if(acc < LOOK) return false;
+  return milesBetween(path[a], path[b]) < CLOSE;
+}
 /* index of the route vertex nearest a point — orders via-points along the route */
 function nearestIdx(path, p){
   let best = 0, bd = Infinity;
@@ -1260,12 +1291,12 @@ function originOf(k){
 /* add a via-point (from a drag) in route order, then re-route that origin */
 function addViaPoint(k, pt){
   const path = chosenPath(k);
-  const list = (state.routePts[k] || []).map(p => Object.assign({}, p, { _i:nearestIdx(path, p) }));
+  const before = { pts:(state.routePts[k] || []).slice(), result:state.results[k] };
+  const list = before.pts.map(p => Object.assign({}, p, { _i:nearestIdx(path, p) }));
   list.push({ lat:pt.lat, lng:pt.lng, _i:nearestIdx(path, pt) });
   list.sort((a,b)=>a._i-b._i);
   state.routePts[k] = list.map(p=>({ lat:p.lat, lng:p.lng }));
-  notify('Route adjusted for this quote — Clear or a new address puts it back to Google\'s default');
-  recomputeOrigin(k, { fit:false });
+  recomputeOrigin(k, { fit:false, dropped:pt, before });
 }
 function removeViaPoint(k, i){
   const a = state.routePts[k] || [];
@@ -1276,8 +1307,9 @@ function removeViaPoint(k, i){
 function moveViaPoint(k, i, pt){
   const a = state.routePts[k] || [];
   if(!a[i]) return;
+  const before = { pts:a.slice(), result:state.results[k] };
   a[i] = { lat:pt.lat, lng:pt.lng };
-  recomputeOrigin(k, { fit:false });
+  recomputeOrigin(k, { fit:false, dropped:pt, before });
 }
 /* forget every hand-dragged route (a different destination, or Clear) */
 function dropAllVias(){ state.routePts = {}; }
@@ -1302,8 +1334,22 @@ function pixelToLatLng(clientX, clientY){
   return proj.fromContainerPixelToLatLng(new google.maps.Point(clientX - rc.left, clientY - rc.top));
 }
 function handleIcon(color, big){
-  return { path:google.maps.SymbolPath.CIRCLE, scale: big ? 8 : 5.5, fillColor:'#ffffff', fillOpacity:1,
-           strokeColor:color, strokeWeight: big ? 3 : 2.5 };
+  return { path:google.maps.SymbolPath.CIRCLE, scale: big ? 8 : 7, fillColor:'#ffffff', fillOpacity:1,
+           strokeColor:color, strokeWeight: 3 };
+}
+/* the via-point of origin k (if any) within `px` screen pixels of a pointer event */
+function viaNearPointer(k, domEvent, px){
+  const proj = overlayHelper && overlayHelper.getProjection(), host = el('map');
+  if(!proj || typeof proj.fromLatLngToContainerPixel !== 'function' || !host || !domEvent || domEvent.clientX == null) return -1;
+  const rc = host.getBoundingClientRect(), x = domEvent.clientX - rc.left, y = domEvent.clientY - rc.top;
+  let best = -1, bd = px*px;
+  (state.routePts[k] || []).forEach((p,i)=>{
+    const q = proj.fromLatLngToContainerPixel(new google.maps.LatLng(p.lat, p.lng));
+    if(!q) return;
+    const d = (q.x-x)**2 + (q.y-y)**2;
+    if(d < bd){ bd = d; best = i; }
+  });
+  return best;
 }
 function beginDrag(k, latLng, domEvent){
   if(drag || !map || !latLng) return;
@@ -1315,7 +1361,8 @@ function beginDrag(k, latLng, domEvent){
   mapLayers.push(handle);
   const cx = domEvent && domEvent.clientX != null ? domEvent.clientX : 0;
   const cy = domEvent && domEvent.clientY != null ? domEvent.clientY : 0;
-  drag = { k, handle, color, startX:cx, startY:cy, moved:false, pos };
+  const moveIdx = viaNearPointer(k, domEvent, 18);      // grabbed the line right by an existing dot → move that dot
+  drag = { k, handle, color, startX:cx, startY:cy, moved:false, pos, moveIdx };
   map.setOptions({ draggable:false, draggableCursor:'grabbing' });
   const move = e=>{
     if(!drag) return;
@@ -1342,7 +1389,7 @@ function endDrag(){
   if(map) map.setOptions({ draggable:true, draggableCursor:null });
   if(d.moved){
     try{ d.handle.setMap(null); }catch(e){}
-    addViaPoint(d.k, d.pos);
+    if(d.moveIdx >= 0) moveViaPoint(d.k, d.moveIdx, d.pos); else addViaPoint(d.k, d.pos);
   }else{
     leaveHandle(d.k, d.handle);           // a plain click/tap: leave a dot to drag
   }
@@ -1660,15 +1707,31 @@ function resetRoute(k){
   recomputeOrigin(k);
 }
 async function recomputeOrigin(k, ropts){
+  ropts = ropts || {};
   const dest = directionsDestination();
   if(!dest) return;
   setStatus('Updating ' + ORIGINS[k].label + ' route…');
+  let refused = '';
   try{
     const result = await routeFor(k);
     if(!result || !result.routes || !result.routes.length) throw new Error('ZERO_RESULTS');
     showRoute(k, result, 0);
+    if(ropts.dropped){                       // a via-point was just dropped or moved: it has to be on a road
+      const path = chosenPath(k), vi = nearestIdx(path, ropts.dropped), v = path[vi];
+      if(!v || milesBetween(ropts.dropped, v) > MAX_SNAP_MILES) refused = 'Drop the route on a road — that spot is too far from one.';
+      else if(isSpur(path, vi)) notify('From that road the route has to go in and back out (dead end / past the turn) — move the dot to a through road if that isn\'t what you want', 7000);
+      else notify('Route adjusted for this quote — Clear or a new address puts it back to Google\'s default');
+    }
   }catch(e){
-    state.results[k] = { routes:null, idx:0, err:dirErrMsg(e) };
+    if(ropts.dropped) refused = 'Could not route through that spot — drop the route on a road.';
+    else state.results[k] = { routes:null, idx:0, err:dirErrMsg(e) };
+  }
+  if(refused && ropts.before){               // put the previous route back without another request
+    state.routePts[k] = ropts.before.pts;
+    if(ropts.before.result) state.results[k] = ropts.before.result;
+    notify(refused, 5000);
+  }else{
+    snapViasToRoute(k);
   }
   const okCount = Object.values(state.results).filter(r=>r.routes).length;
   setStatus(okCount ? 'Quote ready' : 'Routing failed', okCount?'ok':'err');
@@ -1770,8 +1833,8 @@ function drawMap(fit){
     // via-points the route is forced through — drag to move, click to remove
     (state.routePts[k]||[]).forEach((p,i)=>{
       const vm = new google.maps.Marker({
-        position:{ lat:p.lat, lng:p.lng }, map, zIndex:9, draggable:true,
-        title: 'Via point (this quote only) — drag to move, click to remove',
+        position:{ lat:p.lat, lng:p.lng }, map, zIndex:60, draggable:true,
+        title: 'Route goes through here (this quote only) — drag to move, click to remove',
         icon: handleIcon(o.routeColor, false)
       });
       vm.addListener('click',   ()=> removeViaPoint(k, i));
