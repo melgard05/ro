@@ -783,7 +783,7 @@ const usd = new Intl.NumberFormat('en-US',{style:'currency',currency:'USD'});
 
 /* Build identifier — bump this on every deploy. Shown in the header and
    used to detect when a newer version has loaded. Format: vMAJOR.MINOR (YYYY-MM-DD) */
-const APP_VERSION = 'v3.2 (2026-10-13)';
+const APP_VERSION = 'v3.3 (2026-10-23)';
 
 /* ---- safe localStorage (works on GitHub Pages; no-ops if blocked) ---- */
 const store = {
@@ -1139,7 +1139,7 @@ function renderCountyTag(){
 const ROUTES_URL    = 'https://routes.googleapis.com/directions/v2:computeRoutes';
 const ROUTES_FIELDS = 'routes.duration,routes.distanceMeters,routes.polyline.encodedPolyline,'
                     + 'routes.description,routes.viewport,routes.legs.startLocation,routes.legs.endLocation';
-let lastRoutedDest = '';            // the destination the current this-quote-only via-points belong to
+let lastRoutedDest = '';            // the destination the current hand-dragged via-points belong to
 
 function dirErrMsg(e){
   const c = String((e && (e.code || e.message)) || '');
@@ -1235,21 +1235,11 @@ function selectRoute(k, j){
   r.idx = j;
   render();
 }
-/* A dragged detour is only remembered for future quotes when it sits within
-   this many miles of the origin (a departure fix — e.g. forcing trucks off
-   Co Rd 144 as they leave the Detroit Lakes station). A drag farther out is
-   specific to one destination and would distort quotes to every other
-   destination, so it applies to the current quote only and is not saved. */
-const NEAR_ORIGIN_MILES = 6;
+/* A dragged route belongs to the quote it was dragged on. Nothing is saved:
+   Clear, or calculating a different destination, puts every origin back on
+   Google's default route. (v3.3 — before this, a drag within 6 miles of the
+   origin was remembered for later quotes.) */
 
-/* straight-line miles between two {lat,lng} points (haversine) */
-function milesBetween(a, b){
-  const R = 3958.7613, rad = d => d*Math.PI/180;
-  const dLat = rad(b.lat-a.lat), dLng = rad(b.lng-a.lng);
-  const s = Math.sin(dLat/2)**2 +
-            Math.cos(rad(a.lat))*Math.cos(rad(b.lat))*Math.sin(dLng/2)**2;
-  return 2*R*Math.asin(Math.min(1, Math.sqrt(s)));
-}
 /* index of the route vertex nearest a point — orders via-points along the route */
 function nearestIdx(path, p){
   let best = 0, bd = Infinity;
@@ -1269,39 +1259,28 @@ function originOf(k){
 }
 /* add a via-point (from a drag) in route order, then re-route that origin */
 function addViaPoint(k, pt){
-  const path = chosenPath(k), origin = originOf(k);
-  const keep = origin ? milesBetween(origin, pt) <= NEAR_ORIGIN_MILES : true;
+  const path = chosenPath(k);
   const list = (state.routePts[k] || []).map(p => Object.assign({}, p, { _i:nearestIdx(path, p) }));
-  list.push({ lat:pt.lat, lng:pt.lng, keep, _i:nearestIdx(path, pt) });
+  list.push({ lat:pt.lat, lng:pt.lng, _i:nearestIdx(path, pt) });
   list.sort((a,b)=>a._i-b._i);
-  state.routePts[k] = list.map(p=>({ lat:p.lat, lng:p.lng, keep:p.keep!==false }));
-  saveRoutePts(k);
-  if(!keep) notify('Applied to this quote only — drag closer to the origin to save a lasting detour');
-  else notify('Detour saved for the ' + ORIGINS[k].label + ' origin');
+  state.routePts[k] = list.map(p=>({ lat:p.lat, lng:p.lng }));
+  notify('Route adjusted for this quote — Clear or a new address puts it back to Google\'s default');
   recomputeOrigin(k, { fit:false });
 }
 function removeViaPoint(k, i){
   const a = state.routePts[k] || [];
   if(!a[i]) return;
-  a.splice(i, 1); state.routePts[k] = a; saveRoutePts(k);
+  a.splice(i, 1); state.routePts[k] = a;
   recomputeOrigin(k, { fit:false });
 }
 function moveViaPoint(k, i, pt){
   const a = state.routePts[k] || [];
   if(!a[i]) return;
-  const origin = originOf(k);
-  a[i] = { lat:pt.lat, lng:pt.lng, keep: origin ? milesBetween(origin, pt) <= NEAR_ORIGIN_MILES : true };
-  saveRoutePts(k);
+  a[i] = { lat:pt.lat, lng:pt.lng };
   recomputeOrigin(k, { fit:false });
 }
-/* drop the this-quote-only via-points (called when the destination changes) */
-function dropTempVias(){
-  Object.keys(state.routePts).forEach(k=>{
-    const a = state.routePts[k] || [];
-    const kept = a.filter(p=>p.keep!==false);
-    if(kept.length !== a.length) state.routePts[k] = kept;
-  });
-}
+/* forget every hand-dragged route (a different destination, or Clear) */
+function dropAllVias(){ state.routePts = {}; }
 
 /* ---- the drag gesture ----
    mousedown on the chosen route line starts a drag: a white dot follows the
@@ -1421,9 +1400,9 @@ async function calculate(){
   el('calcBtn').disabled = true;
   el('resultsBody').innerHTML = '<div class="empty">Calculating…</div>';
 
-  // a different destination: this-quote-only detours from the last one no longer apply
+  // a different destination: hand-dragged routes from the last one no longer apply
   const destKey = JSON.stringify(dest);
-  if(destKey !== lastRoutedDest){ dropTempVias(); lastRoutedDest = destKey; }
+  if(destKey !== lastRoutedDest){ dropAllVias(); lastRoutedDest = destKey; }
 
   state.results = {};
   for(const k of sel){
@@ -1668,30 +1647,16 @@ function viewSuggestions(){
 }
 
 /* ============================================================
-   DRAGGED-ROUTE PERSISTENCE  —  the via-points the user pulls a
-   route through are remembered per origin (when near the origin),
-   so a fix (e.g. keeping Detroit Lakes off Co Rd 144) carries to
-   the next quote.
+   DRAGGED ROUTES are not saved any more (v3.3). Detours that v3.2
+   remembered per origin are wiped on first load so none sneak
+   back into a quote.
    ============================================================ */
-function loadRoutePts(){
-  Object.keys(LOCATIONS).forEach(k=>{
-    const raw = store.get('mq_routepts_'+k);
-    if(raw){
-      try{ const a = JSON.parse(raw);
-        if(Array.isArray(a)) state.routePts[k] = a.filter(p=>p && isFinite(p.lat) && isFinite(p.lng))
-                                                   .map(p=>({ lat:p.lat, lng:p.lng, keep:true })); }catch(e){}
-    }
-  });
-}
-/* only the near-origin ("keep") points are saved; this-quote-only ones are not */
-function saveRoutePts(k){
-  const a = (state.routePts[k] || []).filter(p=>p.keep!==false).map(p=>({ lat:p.lat, lng:p.lng }));
-  store.set('mq_routepts_'+k, a.length ? JSON.stringify(a) : '');
+function forgetSavedRoutePts(){
+  Object.keys(LOCATIONS).forEach(k=>{ try{ localStorage.removeItem('mq_routepts_'+k); }catch(e){} });
 }
 /* drop the dragged route for an origin and re-fetch Google's default */
 function resetRoute(k){
   state.routePts[k] = [];
-  saveRoutePts(k);
   recomputeOrigin(k);
 }
 async function recomputeOrigin(k, ropts){
@@ -1806,7 +1771,7 @@ function drawMap(fit){
     (state.routePts[k]||[]).forEach((p,i)=>{
       const vm = new google.maps.Marker({
         position:{ lat:p.lat, lng:p.lng }, map, zIndex:9, draggable:true,
-        title: (p.keep===false ? 'Via point (this quote only)' : 'Via point (saved)') + ' — drag to move, click to remove',
+        title: 'Via point (this quote only) — drag to move, click to remove',
         icon: handleIcon(o.routeColor, false)
       });
       vm.addListener('click',   ()=> removeViaPoint(k, i));
@@ -2433,7 +2398,7 @@ renderService();
 buildRateModes();
 
 buildOrigins();
-loadRoutePts();
+forgetSavedRoutePts();
 loadDestPin();
 loadLog();
 loadRecents();
@@ -2490,9 +2455,7 @@ el('resetBtn').addEventListener('click',()=>{
   state.destPin=null;
   saveDestPin();
   updateDestCounty(null, null);         // clear the destination-county tag/highlight
-  // NOTE: saved dragged routes (e.g. the Co Rd 144 detour) are intentionally
-  // kept through Clear so pricing stays consistent. Reset one deliberately via
-  // the "use Google's default" link on its quote card.
+  dropAllVias(); lastRoutedDest = '';   // hand-dragged routes go with the quote
   renderDestRow();
   clearMap();
   el('resultsBody').innerHTML='<div class="empty">Enter a destination and hit <b>Calculate Quote</b>.</div>';
